@@ -13,7 +13,15 @@ import tensorflow_probability as tfp
 
 #
 import keras
-from keras.engine.base_layer import Layer as base_layer
+try:
+    from keras.engine.base_layer import Layer as base_layer
+except ModuleNotFoundError:
+    import sys, types, tf_keras
+    _eng = types.ModuleType('keras.engine')
+    _eng.base_layer = tf_keras.src.engine.base_layer
+    sys.modules.setdefault('keras.engine', _eng)
+    sys.modules.setdefault('keras.engine.base_layer', tf_keras.src.engine.base_layer)
+    from tf_keras.src.engine.base_layer import Layer as base_layer
 
 # custom gradient
 

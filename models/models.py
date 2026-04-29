@@ -38,6 +38,8 @@ from models.resnet import ResNet32_MS
 from models.spikformer import spikformer
 from models.spikformer_tb import spikformer_tb
 
+from models.sdtv3 import sdtv3
+
 from models.mobilenet_v2 import MobileNetV2
 
 from models.efficientnet_v2 import EfficientNetV2S
@@ -82,6 +84,9 @@ model_sel_sc = {
     'EfficientNetV2L': EfficientNetV2L,
     'Spikformer':spikformer,
     'Spikformer_tb': spikformer_tb,
+    'SDT_V3_tiny': sdtv3,
+    'SDT_V3_small': sdtv3,
+    'SDT_V3_medium': sdtv3,
 }
 
 

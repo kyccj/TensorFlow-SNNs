@@ -915,6 +915,11 @@ flags.DEFINE_integer('num_heads',12,'num_heads for CIFAR')
 flags.DEFINE_integer('depths',8,'num of layers for CIFAR')
 flags.DEFINE_integer('sr_ratios',4,'patch size for CIFAR') #num of mlp hidden layer
 
+#SDT-V3
+flags.DEFINE_integer('sdtv3_lens',4,'SFA output range [0, lens]; output integers in {0,...,lens}')
+flags.DEFINE_integer('sdtv3_num_heads',8,'number of attention heads for SDT-V3')
+flags.DEFINE_string('sdtv3_variant','small','SDT-V3 model variant: tiny, small, medium')
+
 #AdamW
 flags.DEFINE_float('weight_decay_AdamW',1e-6,'weight_decay_factor')
 ########################################

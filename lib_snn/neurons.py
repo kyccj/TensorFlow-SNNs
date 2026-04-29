@@ -1650,7 +1650,8 @@ class Neuron(tf.keras.layers.Layer):
             'BURST': self.fire_burst,
             # 'TEMPORAL': self.fire_temporal if t >= self.depth*conf.time_window and t < (self.depth+1)*conf.time_window else self.spike_dummy_fire
             'TEMPORAL': self.fire_temporal if f_run_fire else self.spike_dummy_fire,
-            'NON_LINEAR': self.fire_non_lin
+            'NON_LINEAR': self.fire_non_lin,
+            'MULTISPIKE': self.fire_rate_multispike,
         }.get(self.neural_coding, self.fire_rate)(vmem, t)
         #}.get(self.neural_coding, self.fire_rate)(t)
 
@@ -1849,6 +1850,34 @@ class Neuron(tf.keras.layers.Layer):
 
         #return spike
         return spike, grad
+
+    # SDT-V3: Spike Firing Approximation (SFA)
+    # Forward: floor(clamp(vmem, 0, lens) + 0.5) -> integer in {0,...,lens}
+    # Backward: straight-through estimator where 0 < vmem < lens
+    @tf.custom_gradient
+    def fire_func_multispike(self, vmem):
+        lens = tf.cast(conf.sdtv3_lens, vmem.dtype)
+        clamped = tf.clip_by_value(vmem, tf.zeros_like(vmem), lens * tf.ones_like(vmem))
+        spike = tf.math.floor(clamped + 0.5)
+
+        def grad(upstream):
+            in_range = tf.logical_and(tf.greater(vmem, tf.zeros_like(vmem)),
+                                      tf.less(vmem, lens * tf.ones_like(vmem)))
+            du_do = tf.where(in_range, tf.ones_like(vmem), tf.zeros_like(vmem))
+            return upstream * du_do
+
+        return spike, grad
+
+    def fire_rate_multispike(self, vmem, t):
+        spike = self.fire_func_multispike(vmem)
+        vth = self.vth.read(t - 1)
+        if conf.n_reset_type == 'reset_by_sub':
+            vmem = tf.subtract(vmem, spike * vth)
+        elif conf.n_reset_type == 'reset_to_zero':
+            f_fire = tf.greater(spike, tf.zeros_like(spike))
+            vmem = tf.where(f_fire, tf.zeros_like(vmem), vmem)
+        self.f_fire = tf.greater(spike, tf.zeros_like(spike))
+        return spike, vmem
 
     #
     def fire_rate(self, vmem, t):

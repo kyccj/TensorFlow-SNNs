@@ -82,6 +82,12 @@ def model_builder(
                               dataset_name=dataset_name, classes=num_class,
                               include_top=include_top, patch_size=conf.patch_size, embed_dims=conf.embed_dims,
                               num_heads=conf.num_heads, depths=conf.depths, sr_ratios=conf.sr_ratios)
+    elif 'SDT_V3' in conf.model:
+        variant = conf.model.split('_')[-1].lower()
+        model_top = model_top(batch_size=batch_size, input_shape=image_shape, conf=conf,
+                              model_name=model_name, weights=load_weight,
+                              dataset_name=dataset_name, classes=num_class,
+                              include_top=include_top, variant=variant)
     else:
         model_top = model_top(batch_size=batch_size, input_shape=image_shape, conf=conf,
                               model_name=model_name, weights=load_weight,
