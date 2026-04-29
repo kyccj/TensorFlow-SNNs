@@ -1,6 +1,9 @@
 
 import tensorflow as tf
-import tensorflow_addons as tfa
+try:
+    import tensorflow_addons as tfa
+except ModuleNotFoundError:
+    tfa = None
 import keras
 
 import lib_snn

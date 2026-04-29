@@ -22,9 +22,9 @@ def repconv(x, channels, name_prefix='repconv', k_init='glorot_uniform', tdbn=Fa
     pw_bn = lib_snn.layers.BatchNormalization(en_tdbn=tdbn, dtype=tf.float32,
                                                name=name_prefix + '_pw_bn')(pw)
 
-    dw = lib_snn.layers.DepthwiseConv2D(kernel_size=3, padding='SAME',
-                                         use_bias=False,
-                                         name=name_prefix + '_dw')(x)
+    dw = tf.keras.layers.DepthwiseConv2D(kernel_size=3, padding='SAME',
+                                          use_bias=False,
+                                          name=name_prefix + '_dw')(x)
     dw_bn = lib_snn.layers.BatchNormalization(en_tdbn=tdbn, dtype=tf.float32,
                                                name=name_prefix + '_dw_bn')(dw)
 
@@ -53,9 +53,9 @@ def sepconv(x, in_channels, out_channels, expansion=2,
     pw_exp_n = lib_snn.activations.Activation(act_type=act_tp,
                                                name=name_prefix + '_n1')(pw_exp_bn)
 
-    dw = lib_snn.layers.DepthwiseConv2D(kernel_size=3, padding='SAME',
-                                         use_bias=False,
-                                         name=name_prefix + '_dw')(pw_exp_n)
+    dw = tf.keras.layers.DepthwiseConv2D(kernel_size=3, padding='SAME',
+                                          use_bias=False,
+                                          name=name_prefix + '_dw')(pw_exp_n)
     dw_bn = lib_snn.layers.BatchNormalization(en_tdbn=tdbn, dtype=tf.float32,
                                                name=name_prefix + '_dw_bn')(dw)
     dw_n = lib_snn.activations.Activation(act_type=act_tp, name=name_prefix + '_n2')(dw_bn)
