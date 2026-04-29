@@ -296,6 +296,44 @@ elif conf.SEL_model_dataset == 'SDT_V3_C100':
     conf.reg_psp_SEL_const = 5e-6
     conf.reg_psp_SEL_BN_ratio_value = -0.8
     conf.reg_psp_SEL_BN_ratio_rate = 1e-4
+elif conf.SEL_model_dataset == 'SDT_V3_L_C10':
+    conf.model = 'SDT_V3_large'
+    conf.dataset = 'CIFAR10'
+    conf.n_type = 'IF'
+    conf.neural_coding = 'MULTISPIKE'
+    conf.sdtv3_lens = 4
+    conf.sdtv3_num_heads = 8
+    conf.sdtv3_variant = 'large'
+    conf.time_step = 4
+    conf.train_epoch = 200
+    conf.optimizer = 'ADAMW'
+    conf.learning_rate = 6e-4
+    conf.weight_decay_AdamW = 0.05
+    conf.batch_size = 64
+    conf.label_smoothing = 0.1
+    conf.adaptive_dec_vth_scale = 0.8
+    conf.reg_psp_SEL_const = 5e-6
+    conf.reg_psp_SEL_BN_ratio_value = -0.8
+    conf.reg_psp_SEL_BN_ratio_rate = 1e-4
+elif conf.SEL_model_dataset == 'SDT_V3_L_Img':
+    conf.model = 'SDT_V3_large'
+    conf.dataset = 'ImageNet'
+    conf.n_type = 'IF'
+    conf.neural_coding = 'MULTISPIKE'
+    conf.sdtv3_lens = 4
+    conf.sdtv3_num_heads = 8
+    conf.sdtv3_variant = 'large'
+    conf.time_step = 4
+    conf.train_epoch = 200
+    conf.optimizer = 'ADAMW'
+    conf.learning_rate = 6e-4
+    conf.weight_decay_AdamW = 0.05
+    conf.batch_size = 32
+    conf.label_smoothing = 0.1
+    conf.adaptive_dec_vth_scale = 0.8
+    conf.reg_psp_SEL_const = 5e-6
+    conf.reg_psp_SEL_BN_ratio_value = -0.8
+    conf.reg_psp_SEL_BN_ratio_rate = 1e-4
 
 if conf.dataset == 'CIFAR10_DVS':
     conf.learning_rate = 0.1

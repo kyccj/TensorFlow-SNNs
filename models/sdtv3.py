@@ -6,11 +6,20 @@ conf = config.flags
 
 from models.sdtv3_blocks import ms_conv_block, ms_block
 
-# Variant configurations: embed_dims per stage, block depths per stage
+# Original block structure (hardcoded in paper, same for all variants):
+#   Stage 1: 2 x MS_ConvBlock
+#   Stage 2: 2 x MS_ConvBlock
+#   Stage 3: 6 x MS_Block  (transformer)
+#   Stage 4: 2 x MS_Block  (transformer)
+_STAGE_CONV_DEPTHS = [2, 2]   # stages 1-2: ConvBlock counts
+_STAGE_ATTN_DEPTHS = [6, 2]   # stages 3-4: Transformer block counts
+
+# Only embed_dims differ between variants
 _VARIANTS = {
-    'tiny':   {'dims': [24,  48,  96,  128], 'depths': [1, 1, 1, 1]},
-    'small':  {'dims': [32,  64,  128, 192], 'depths': [1, 1, 2, 2]},
-    'medium': {'dims': [48,  96,  192, 240], 'depths': [1, 1, 2, 4]},
+    'tiny':   [24,  48,  96,  128],
+    'small':  [32,  64,  128, 192],
+    'medium': [48,  96,  192, 240],
+    'large':  [64,  128, 256, 360],
 }
 
 
@@ -18,15 +27,13 @@ def sdtv3(batch_size, input_shape, conf, model_name,
           variant='small', classes=1000, include_top=True,
           dataset_name=None, weights=None, **kwargs):
 
-    cfg = _VARIANTS.get(variant)
-    assert cfg is not None, f'Unknown SDT-V3 variant: {variant}. Choose from {list(_VARIANTS)}'
-    dims = cfg['dims']
-    depths = cfg['depths']
+    dims = _VARIANTS.get(variant)
+    assert dims is not None, \
+        f'Unknown SDT-V3 variant: {variant}. Choose from {list(_VARIANTS)}'
 
     num_heads = conf.sdtv3_num_heads
     k_init = 'glorot_uniform'
     tdbn = (conf.nn_mode == 'SNN') and conf.tdbn
-
     act_tp = 'relu' if conf.nn_mode == 'ANN' else conf.n_type
 
     input_tensor = tf.keras.layers.Input(shape=input_shape, batch_size=batch_size)
@@ -34,11 +41,8 @@ def sdtv3(batch_size, input_shape, conf, model_name,
     if conf.nn_mode == 'SNN':
         x = lib_snn.activations.Activation(act_type=act_tp, loc='IN', name='n_in')(x)
 
-    # 4-stage hierarchical network
-    # Stage 1-2: purely convolutional (MS_ConvBlock)
-    # Stage 3-4: mix of convolution and transformer (MS_Block added in later blocks)
-    for stage_idx, (dim, depth) in enumerate(zip(dims, depths)):
-        # Downsample at the start of each stage via stride-2 conv
+    # Stages 1-2: ConvBlock only (stride-2 downsample + MS_ConvBlock x n)
+    for stage_idx, (dim, n_blk) in enumerate(zip(dims[:2], _STAGE_CONV_DEPTHS)):
         x = lib_snn.layers.Conv2D(dim, kernel_size=3, strides=2, padding='SAME',
                                    kernel_initializer=k_init, use_bias=False,
                                    name=f's{stage_idx+1}_ds_conv')(x)
@@ -46,19 +50,25 @@ def sdtv3(batch_size, input_shape, conf, model_name,
                                                name=f's{stage_idx+1}_ds_bn')(x)
         x = lib_snn.activations.Activation(act_type=act_tp,
                                             name=f's{stage_idx+1}_ds_n')(x)
+        for blk_idx in range(n_blk):
+            x = ms_conv_block(x, dim, mlp_ratio=2,
+                               name_prefix=f's{stage_idx+1}_cblk{blk_idx}',
+                               k_init=k_init, tdbn=tdbn)
 
-        for blk_idx in range(depth):
-            # Stages 0-1: all convolutional blocks
-            # Stages 2-3: first half convolutional, second half transformer
-            use_attn = (stage_idx >= 2) and (blk_idx >= depth // 2)
-            if use_attn:
-                x = ms_block(x, dim, num_heads=num_heads, mlp_ratio=4,
-                              name_prefix=f's{stage_idx+1}_tblk{blk_idx}',
-                              k_init=k_init, tdbn=tdbn)
-            else:
-                x = ms_conv_block(x, dim, mlp_ratio=2,
-                                  name_prefix=f's{stage_idx+1}_cblk{blk_idx}',
-                                  k_init=k_init, tdbn=tdbn)
+    # Stages 3-4: Transformer block only (stride-2 downsample + MS_Block x n)
+    for stage_idx, (dim, n_blk) in enumerate(zip(dims[2:], _STAGE_ATTN_DEPTHS)):
+        real_stage = stage_idx + 3   # display as stage 3, 4
+        x = lib_snn.layers.Conv2D(dim, kernel_size=3, strides=2, padding='SAME',
+                                   kernel_initializer=k_init, use_bias=False,
+                                   name=f's{real_stage}_ds_conv')(x)
+        x = lib_snn.layers.BatchNormalization(en_tdbn=tdbn, dtype=tf.float32,
+                                               name=f's{real_stage}_ds_bn')(x)
+        x = lib_snn.activations.Activation(act_type=act_tp,
+                                            name=f's{real_stage}_ds_n')(x)
+        for blk_idx in range(n_blk):
+            x = ms_block(x, dim, num_heads=num_heads, mlp_ratio=4,
+                          name_prefix=f's{real_stage}_tblk{blk_idx}',
+                          k_init=k_init, tdbn=tdbn)
 
     if include_top:
         x = tf.keras.layers.GlobalAveragePooling2D(data_format='channels_last',

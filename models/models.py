@@ -87,6 +87,7 @@ model_sel_sc = {
     'SDT_V3_tiny': sdtv3,
     'SDT_V3_small': sdtv3,
     'SDT_V3_medium': sdtv3,
+    'SDT_V3_large': sdtv3,
 }
 
 
