@@ -482,12 +482,12 @@ class Model(tf.keras.Model):
             nodes = nodes_by_depth[depth]
             for node in nodes:
 
-                #print(node.layer)
-                if isinstance(node.layer,lib_snn.layers.MaxPool2D):
-                    node.layer.prev_layer = prev_layer
-                    node.layer.prev_layer_set_done  = True
+                _node_layer = getattr(node, 'layer', None) or getattr(node, 'operation', None)
+                if isinstance(_node_layer, lib_snn.layers.MaxPool2D):
+                    _node_layer.prev_layer = prev_layer
+                    _node_layer.prev_layer_set_done = True
 
-                prev_layer = node.layer
+                prev_layer = _node_layer
 
         #assert False
 
@@ -665,6 +665,29 @@ class Model(tf.keras.Model):
             Model.f_skip_bn = (self.nn_mode=='ANN' and self.conf.f_fused_bn) or (self.nn_mode=='SNN')
 
         return ret_val
+
+    def _run_internal_graph(self, inputs, training=None, mask=None):
+        """Keras 3 compatibility shim: _run_internal_graph → _run_through_graph."""
+        if not hasattr(self, '_run_through_graph'):
+            # Keras 2 path
+            return super()._run_internal_graph(inputs, training=training, mask=mask)
+
+        def _op_fn(op):
+            def _call(*args, **kwargs):
+                if training is not None:
+                    try:
+                        return op(*args, training=training, **kwargs)
+                    except TypeError:
+                        return op(*args, **kwargs)
+                return op(*args, **kwargs)
+            return _call
+
+        result = self._run_through_graph(inputs, operation_fn=_op_fn)
+        return result
+
+    def _validate_target_and_loss(self, y, loss):
+        """Keras 3 compatibility shim — validation now handled by Keras internally."""
+        pass
 
     #
     def call_ann(self,inputs,training=None,mask=None):
@@ -2060,7 +2083,9 @@ class Model(tf.keras.Model):
                     elif hasattr(self.optimizer,'compute_gradients'):
                         grads_accum_and_vars = self.optimizer.compute_gradients(loss=loss, var_list=self.trainable_variables, tape=tape)
                     else:
-                        assert False, 'compute gradients'
+                        # Keras 3: use tape.gradient directly
+                        grads = tape.gradient(loss, self.trainable_variables)
+                        grads_accum_and_vars = list(zip(grads, self.trainable_variables))
 
                 # for grad, var in grads_accum_and_vars:
                 #     print(f"Grad shape: {grad.shape}, Var shape: {var.shape,var.name}")
@@ -2142,7 +2167,9 @@ class Model(tf.keras.Model):
                         assert False
 
 
-                return self.compute_metrics(x, y, y_pred, sample_weight)
+                result = self.compute_metrics(x, y, y_pred, sample_weight)
+                result['loss'] = loss
+                return result
 
             else:
                 if True:
@@ -2191,7 +2218,9 @@ class Model(tf.keras.Model):
                 #grads_accum = grads
                 #assert False
 
-        return self.compute_metrics(x, y, y_pred, sample_weight)
+        result = self.compute_metrics(x, y, y_pred, sample_weight)
+        result['loss'] = loss
+        return result
         #return ret
 
 
@@ -2545,8 +2574,14 @@ class Model(tf.keras.Model):
         #compiled_loss = compile_utils.LossesContainer(
             #self.loss, None, output_names=self.output_names)
         #metrics += [compiled_loss._loss_metric]
-        #metrics += self.compiled_metrics._metrics
-        metrics = self.compiled_metrics._metrics
+        # Keras 3: compiled_metrics is DeprecatedCompiledMetric with no _metrics
+        # Fall back to _compile_metrics._user_metrics if available
+        if hasattr(self.compiled_metrics, '_metrics'):
+            metrics = self.compiled_metrics._metrics
+        elif hasattr(self, '_compile_metrics') and hasattr(self._compile_metrics, '_user_metrics'):
+            metrics = self._compile_metrics._user_metrics or []
+        else:
+            metrics = []
 
         #print(metrics)
         #for metric in metrics:
@@ -2760,20 +2795,21 @@ class Model(tf.keras.Model):
 
     # set layers with neuron
     def set_layers_w_neuron(self):
-        if False: #old
-            #self.layers_w_neuron = []
-            for layer in self.layers:
-                #if hasattr(layer, 'act_snn'):
-                if hasattr(layer, 'act'):
-                    #if layer.act_snn is not None:
-                    #if isinstance(layer.act,lib_snn.neurons.Neuron):
-                    if not (layer.act_dnn is None):
-                        #print(layer.name)
-                        self.layers_w_neuron.append(layer)
-        for layer in self.layers:
-            if isinstance(layer, lib_snn.activations.Activation):
+        seen = set()
+
+        def _check_and_add(layer):
+            if id(layer) in seen:
+                return
+            seen.add(id(layer))
+            # Keras 3: model.layers exposes Neuron sub-layers directly
+            if isinstance(layer, lib_snn.neurons.Neuron):
+                self.layers_w_neuron.append(layer)
+            elif isinstance(layer, lib_snn.activations.Activation):
                 if isinstance(layer.act, lib_snn.neurons.Neuron):
                     self.layers_w_neuron.append(layer)
+
+        for layer in self.layers:
+            _check_and_add(layer)
 
 
     ###########################################################
@@ -3304,63 +3340,41 @@ class Model(tf.keras.Model):
     # based on _run_internal_graph() function in keras.engine.functional.py
     ###########################################################
     def _run_internal_graph_snn_t_first(self, inputs, training=None, mask=None):
-        """ run internal graph - SNN, temporal first
-            Computes output tensors for new inputs.
-
-        # Note:
-            - Can be run on non-Keras tensors.
-
-        Args:
-            inputs: Tensor or nested structure of Tensors.
-            training: Boolean learning phase.
-            mask: (Optional) Tensor or nested structure of Tensors.
-
-        Returns:
-            output_tensors
-        """
-        inputs = self._flatten_to_reference_inputs(inputs)
-        if mask is None:
-            masks = [None] * len(inputs)
+        """Run internal graph - SNN, temporal first (Keras 3 compatible)."""
+        if not isinstance(inputs, (list, tuple)):
+            inputs = [inputs]
         else:
-            masks = self._flatten_to_reference_inputs(mask)
-        for input_t, mask in zip(inputs, masks):
-            input_t._keras_mask = mask
+            inputs = list(inputs)
 
-        # Dictionary mapping reference tensors to computed tensors.
+        # Dictionary mapping reference tensor id to computed TensorArrays.
         tensor_dict = {}
-        tensor_usage_count = self._tensor_usage_count
         for x, y in zip(self.inputs, inputs):
-            y = self._conform_to_reference_input(y, ref_input=x)
-            x_id = str(id(x))
-            tensor_dict[x_id] = [y] * tensor_usage_count[x_id]
+            if hasattr(y, 'dtype') and y.dtype != x.dtype:
+                y = tf.cast(y, x.dtype)
+            tensor_dict[id(x)] = y  # store raw input; input node will wrap in TensorArray
 
         nodes_by_depth = self._nodes_by_depth
         depth_keys = list(nodes_by_depth.keys())
         depth_keys.sort(reverse=True)
 
-        # sspark
-        # SNN training, temporal first
-        #if self.conf.nn_mode=='SNN' and not self.conf.snn_training_spatial_first:
         for depth in depth_keys:
             nodes = nodes_by_depth[depth]
             for node in nodes:
-                layer_name = node.layer.name
-                tensor_array_name='out_arr'+layer_name
+                layer = node.operation
+                layer_name = layer.name if layer is not None else 'input'
+                tensor_array_name = 'out_arr' + layer_name
+
                 if node.is_input:
+                    # input node: output_tensors[0] is the same KerasTensor as self.inputs[n]
+                    x = node.output_tensors[0]
+                    _input = tensor_dict[id(x)]
 
-                    x = node.input_tensors[0]
-                    x_id = str(id(x))
-                    _input = tensor_dict[x_id][0]
-
-                    if conf.input_data_time_dim:    # event data
-                        # _input = [B,T,...]
-                        _input_one_ts_shape = _input.shape[0]+_input.shape[2:]
+                    if conf.input_data_time_dim:
+                        _input_one_ts_shape = _input.shape[0:1].concatenate(_input.shape[2:])
                     else:
                         _input_one_ts_shape = _input.shape
 
                     layer_out = tf.TensorArray(
-                        #dtype=tf.float32,
-                        #dtype=self._dtype,
                         dtype=_input.dtype,
                         size=self.conf.time_step,
                         element_shape=_input_one_ts_shape,
@@ -3368,89 +3382,64 @@ class Model(tf.keras.Model):
                         tensor_array_name=tensor_array_name)
 
                     glb_t.reset()
-                    for t in range(1,self.conf.time_step+1):
-                        if conf.input_data_time_dim:    # event data
-                            #_input_t = _input[:,t-1,:,:,:]
-
-                            # sspark, 251017
+                    for t in range(1, self.conf.time_step + 1):
+                        if conf.input_data_time_dim:
                             if _input.shape.__len__() == 5:
-                                _input_t = _input[:,t-1,:,:,:]
+                                _input_t = _input[:, t-1, :, :, :]
                             elif _input.shape.__len__() == 4:
-                                _input_t = _input[:,t-1,:,:]
+                                _input_t = _input[:, t-1, :, :]
                             elif _input.shape.__len__() == 3:
-                                _input_t = _input[:,t-1,:]
-                            elif _inputs.shape.__len__() == 2:
-                                _input_t = _input[:,t-1]
+                                _input_t = _input[:, t-1, :]
+                            elif _input.shape.__len__() == 2:
+                                _input_t = _input[:, t-1]
                             else:
                                 assert False
-
-                        else:   # static image
+                        else:
                             _input_t = _input
 
-                        #
                         if conf.integer_spike:
                             if t == 1:
                                 layer_out = layer_out.write(t - 1, _input_t)
                             else:
                                 layer_out = layer_out.write(t - 1, tf.zeros(_input_t.shape))
                         else:
-                            layer_out = layer_out.write(t-1,_input_t)
+                            layer_out = layer_out.write(t - 1, _input_t)
                         glb_t()
 
-
-                    #continue  # Input tensors already exist.
+                    tensor_dict[id(x)] = layer_out
 
                 else:
+                    if any(id(t) not in tensor_dict for t in node.input_tensors):
+                        assert False, 'Node inputs not available: ' + layer_name
+                        continue
 
-                    #
-                    #print(node.layer)
-
-                    if any(t_id not in tensor_dict for t_id in node.flat_input_ids):
-                        assert False
-                        continue  # Node is not computable, try skipping.
-
-                    #layer_in = layer_out
-
-                    args, kwargs = node.map_arguments(tensor_dict)
+                    args, kwargs = node.arguments.fill_in(tensor_dict)
                     layer_in = args[0]
-                    #print(layer_in)
 
                     f_temporal_reduction = False
-                    #
-                    layers_temporal_reduction = []
-                    layers_temporal_reduction.append(lib_snn.layers.BatchNormalization)
+                    layers_temporal_reduction = [lib_snn.layers.BatchNormalization]
 
-                    if type(node.layer) in layers_temporal_reduction:
+                    if type(layer) in layers_temporal_reduction:
                         f_temporal_reduction = True
 
-                    if hasattr(node.layer,'temporal_mean_input') and node.layer.temporal_mean_input:
+                    if hasattr(layer, 'temporal_mean_input') and layer.temporal_mean_input:
                         f_temporal_reduction = True
 
-                    # temporal batch
                     f_temporal_batch = False
-                    if hasattr(node.layer,'temporal_batch') and node.layer.temporal_batch:
-                        f_temporal_batch= True
+                    if hasattr(layer, 'temporal_batch') and layer.temporal_batch:
+                        f_temporal_batch = True
 
-                    #
                     if f_temporal_batch:
-                    #if False:
                         _layer_in = layer_in.stack()
                         shape_t, shape_b = _layer_in.shape[0], _layer_in.shape[1]
-                        shape_tb = shape_t*shape_b
+                        shape_tb = shape_t * shape_b
                         shape_new = tf.concat([[shape_tb], _layer_in.shape[2:]], axis=0)
                         _layer_in = tf.reshape(_layer_in, shape_new)
 
-                        #
-                        _layer_out = node.layer(_layer_in)
+                        _layer_out = layer(_layer_in)
+                        _layer_out = tf.reshape(_layer_out, tf.concat([[shape_t, shape_b], _layer_out.shape[1:]], axis=0))
 
-                        #
-                        _layer_out = tf.reshape(_layer_out, tf.concat([[shape_t,shape_b],_layer_out.shape[1:]],axis=0))
-
-
-                        #
                         layer_out = tf.TensorArray(
-                            #dtype=tf.float32,
-                            #dtype=self._dtype,
                             dtype=_layer_out.dtype,
                             size=self.conf.time_step,
                             element_shape=_layer_out.shape[1:],
@@ -3458,19 +3447,15 @@ class Model(tf.keras.Model):
                             tensor_array_name=tensor_array_name)
 
                         glb_t.reset()
-                        for t in range(1,self.conf.time_step+1):
-                            layer_out= layer_out.write(t-1,_layer_out[t-1])
-
+                        for t in range(1, self.conf.time_step + 1):
+                            layer_out = layer_out.write(t - 1, _layer_out[t - 1])
                             glb_t()
 
                     elif f_temporal_reduction:
-                        _layer_in = tf.reduce_mean(layer_in.stack(),axis=0)
-                        _layer_out = node.layer(_layer_in)
+                        _layer_in = tf.reduce_mean(layer_in.stack(), axis=0)
+                        _layer_out = layer(_layer_in)
 
-                        #
                         layer_out = tf.TensorArray(
-                            #dtype=tf.float32,
-                            #dtype=self._dtype,
                             dtype=_layer_out.dtype,
                             size=self.conf.time_step,
                             element_shape=_layer_out.shape,
@@ -3478,63 +3463,56 @@ class Model(tf.keras.Model):
                             tensor_array_name=tensor_array_name)
 
                         glb_t.reset()
-                        for t in range(1,self.conf.time_step+1):
-                            layer_out= layer_out.write(t-1,_layer_out)
-
+                        for t in range(1, self.conf.time_step + 1):
+                            layer_out = layer_out.write(t - 1, _layer_out)
                             glb_t()
+
                     else:
                         glb_t.reset()
-                        for t in range(1,self.conf.time_step+1):
-
-                            if isinstance(layer_in,list) :
-                                _layer_in = [_layer_in.read(t-1) for _layer_in in layer_in]
+                        for t in range(1, self.conf.time_step + 1):
+                            if isinstance(layer_in, list):
+                                _layer_in = [li.read(t - 1) for li in layer_in]
                             else:
-                                _layer_in = layer_in.read(t-1)
+                                _layer_in = layer_in.read(t - 1)
 
-                            _layer_out = node.layer(_layer_in)
-                            #print(node.layer.name)
+                            _layer_out = layer(_layer_in)
 
-                            if t-1==0:
+                            if t - 1 == 0:
                                 layer_out = tf.TensorArray(
-                                    #dtype=tf.float32,
-                                    #dtype=tf.float16,
-                                    #dtype=self._dtype,
                                     dtype=_layer_out.dtype,
                                     size=self.conf.time_step,
                                     element_shape=_layer_out.shape,
                                     clear_after_read=False,
                                     tensor_array_name=tensor_array_name)
 
-                            layer_out = layer_out.write(t-1,_layer_out)
-
+                            layer_out = layer_out.write(t - 1, _layer_out)
                             glb_t()
 
-                #for x_id, y in zip(node.flat_output_ids, tf.nest.flatten(layer_out.read(self.conf.time_step-1))):
-                for x_id, y in zip(node.flat_output_ids, tf.nest.flatten(layer_out)):
-                    tensor_dict[x_id] = [y] * tensor_usage_count[x_id]
+                    for x, y in zip(node.outputs, tf.nest.flatten(layer_out)):
+                        tensor_dict[id(x)] = y
 
         output_tensors = []
         for x in self.outputs:
-            x_id = str(id(x))
-            assert x_id in tensor_dict, 'Could not compute output ' + str(x)
-            #output_tensors.append(tensor_dict[x_id].pop())
-            _output_tensors = tensor_dict[x_id].pop().stack()
+            assert id(x) in tensor_dict, 'Could not compute output ' + str(x)
+            _output_tensors = tensor_dict[id(x)].stack()
 
-            if self.snn_output_processing=='last_ts':
-                output_tensors.append(_output_tensors[self.conf.time_step-1])
-            elif self.snn_output_processing=='avg':
-                output_tensors.append(tf.reduce_mean(_output_tensors,axis=0))
-            elif self.snn_output_processing=='all':
+            if self.snn_output_processing == 'last_ts':
+                output_tensors.append(_output_tensors[self.conf.time_step - 1])
+            elif self.snn_output_processing == 'avg':
+                output_tensors.append(tf.reduce_mean(_output_tensors, axis=0))
+            elif self.snn_output_processing == 'all':
                 rank = tf.rank(_output_tensors)
                 perm = tf.concat([
-                    tf.constant([1,0],dtype=tf.int32),
-                    tf.range(2,rank,dtype=tf.int32)
-                    ], axis=0)
-                output_tensors.append(tf.transpose(_output_tensors,perm=perm))
+                    tf.constant([1, 0], dtype=tf.int32),
+                    tf.range(2, rank, dtype=tf.int32)
+                ], axis=0)
+                output_tensors.append(tf.transpose(_output_tensors, perm=perm))
             else:
                 assert False
 
-        return tf.nest.pack_sequence_as(self._nested_outputs, output_tensors)
+        if len(output_tensors) == 1:
+            return output_tensors[0]
+        return output_tensors
 
 
     ###########################################################

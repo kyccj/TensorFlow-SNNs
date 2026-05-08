@@ -369,6 +369,13 @@ class Neuron(tf.keras.layers.Layer):
 
         self.built = True
 
+    # Keras 3 compatibility: model.layers exposes the Neuron directly (not the
+    # Activation wrapper), so give Neuron an `act` property pointing to itself
+    # so that existing code like `layer.act.spike_count` keeps working.
+    @property
+    def act(self):
+        return self
+
     #@tf.function
     #@tf.custom_gradient
     #def call(self ,inputs ,t, training):

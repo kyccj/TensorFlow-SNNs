@@ -18,14 +18,14 @@
 # based on keras.layers.core.dense.py
 
 
-from keras import activations
-from keras import backend
-from keras import constraints
-from keras import initializers
-from keras import regularizers
-from keras.dtensor import utils
-from keras.engine.base_layer import Layer
-from keras.engine.input_spec import InputSpec
+import tensorflow as tf
+from tensorflow.keras import activations, backend, constraints, initializers, regularizers
+from tensorflow.keras.layers import Layer, InputSpec
+
+class utils:
+    @staticmethod
+    def allow_initializer_layout(fn):
+        return fn
 import tensorflow.compat.v2 as tf
 
 
@@ -161,7 +161,7 @@ class Dense(Layer):
                              f'Full input shape received: {input_shape}')
         self.input_spec = InputSpec(min_ndim=2, axes={-1: last_dim})
         self.kernel = self.add_weight(
-            'kernel',
+            name='kernel',
             shape=[last_dim, self.units],
             initializer=self.kernel_initializer,
             regularizer=self.kernel_regularizer,
@@ -170,7 +170,7 @@ class Dense(Layer):
             trainable=True)
         if self.use_bias:
             self.bias = self.add_weight(
-                'bias',
+                name='bias',
                 shape=[self.units,],
                 initializer=self.bias_initializer,
                 regularizer=self.bias_regularizer,
@@ -190,9 +190,12 @@ class Dense(Layer):
 
         self.built = True
 
-    def call(self, inputs):
-        if inputs.dtype.base_dtype != self._compute_dtype_object.base_dtype:
-            inputs = tf.cast(inputs, dtype=self._compute_dtype_object)
+    def call(self, inputs, training=None):
+        _cdo = getattr(self, '_compute_dtype_object', None)
+        if _cdo is None:
+            _cdo = tf.as_dtype(self.compute_dtype)
+        if inputs.dtype.base_dtype != _cdo.base_dtype:
+            inputs = tf.cast(inputs, dtype=_cdo)
 
         is_ragged = isinstance(inputs, tf.RaggedTensor)
         if is_ragged:
@@ -275,10 +278,10 @@ class Dense(Layer):
                     #self.input_accum.assign(self.input_accum+inputs)
 
                 else:
-                    #outputs = mat_mul_dense(a=inputs, b=self.kernel)
-                    #outputs = tf.matmul(a=inputs, b=self.kernel)
-                    #outputs = self.mat_mul_dense(inputs,self.kernel)
-                    outputs = self.mat_mul_dense(inputs,kernel)
+                    if conf.nn_mode == 'SNN' and conf.en_stdp_pathway and hasattr(self, 'n_pre'):
+                        outputs = self.mat_mul_dense(inputs, kernel)
+                    else:
+                        outputs = tf.matmul(inputs, kernel)
 
 
         # Broadcast kernel to inputs.

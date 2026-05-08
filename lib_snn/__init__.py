@@ -1,8 +1,9 @@
 #
 
+from lib_snn import layers  # must be first: patches keras.engine into sys.modules
+
 from lib_snn import model
 from lib_snn import model_tb
-from lib_snn import layers
 
 from lib_snn import activations
 from lib_snn import activations_nas
@@ -24,9 +25,11 @@ from lib_snn import optimizers
 
 #from lib_snn import hp_tune
 
-from lib_snn import hp_tune
-
-from lib_snn import hp_tune_model
+try:
+    from lib_snn import hp_tune
+    from lib_snn import hp_tune_model
+except (ImportError, AttributeError):
+    pass
 
 from lib_snn import model_builder
 

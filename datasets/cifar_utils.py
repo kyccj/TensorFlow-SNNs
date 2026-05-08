@@ -8,8 +8,25 @@ import json
 import numpy as np
 
 #from keras import activations
-from keras import backend
-from keras.utils import data_utils
+from tensorflow.keras import backend
+import tensorflow as tf
+# Keras 3 compatibility: restore removed backend functions
+if not hasattr(backend, 'constant'):
+    backend.constant = tf.constant
+if not hasattr(backend, 'dtype'):
+    backend.dtype = lambda x: x.dtype.name if hasattr(x, 'dtype') else str(type(x))
+if not hasattr(backend, 'bias_add'):
+    backend.bias_add = lambda x, b, data_format=None: x + b
+if not hasattr(backend, 'cast'):
+    backend.cast = tf.cast
+try:
+    from keras.utils import data_utils
+except ImportError:
+    from tensorflow.keras.utils import get_file as _get_file
+    class data_utils:
+        @staticmethod
+        def get_file(*args, **kwargs):
+            return _get_file(*args, **kwargs)
 
 # isort: off
 #from tensorflow.python.util.tf_export import keras_export

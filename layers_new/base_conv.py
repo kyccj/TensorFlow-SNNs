@@ -19,14 +19,48 @@
 """Keras base class for convolution layers."""
 # pylint: disable=g-classes-have-attributes
 
-from keras import activations
-from keras import constraints
-from keras import initializers
-from keras import regularizers
-from keras.engine.base_layer import Layer
-from keras.engine.input_spec import InputSpec
-from keras.utils import conv_utils
+from tensorflow.keras import activations, constraints, initializers, regularizers
+from tensorflow.keras.layers import Layer, InputSpec
 import tensorflow.compat.v2 as tf
+
+class conv_utils:
+    @staticmethod
+    def normalize_tuple(value, n, name, allow_zero=False):
+        if isinstance(value, int):
+            return (value,) * n
+        else:
+            return tuple(value)
+    @staticmethod
+    def normalize_padding(value):
+        return value.lower()
+    @staticmethod
+    def normalize_data_format(value):
+        return value or 'channels_last'
+    @staticmethod
+    def convert_data_format(data_format, ndim):
+        if data_format == 'channels_last':
+            if ndim == 3: return 'NWC'
+            elif ndim == 4: return 'NHWC'
+            elif ndim == 5: return 'NDHWC'
+        elif data_format == 'channels_first':
+            if ndim == 3: return 'NCW'
+            elif ndim == 4: return 'NCHW'
+            elif ndim == 5: return 'NCDHW'
+        return 'NHWC'
+    @staticmethod
+    def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
+        if input_length is None:
+            return None
+        dilated_filter_size = filter_size + (filter_size - 1) * (dilation - 1)
+        if padding == 'valid':
+            output_length = input_length - dilated_filter_size + 1
+        elif padding == 'same':
+            output_length = input_length
+        elif padding == 'full':
+            output_length = input_length + dilated_filter_size - 1
+        elif padding == 'causal':
+            output_length = input_length
+        return (output_length + stride - 1) // stride
 
 #
 from tensorflow.python.ops import array_ops
@@ -182,8 +216,7 @@ class Conv(Layer):
 
         if self.padding == 'causal':
             # pylint: disable=g-import-not-at-top
-            from keras.layers.convolutional.conv1d import Conv1D
-            from keras.layers.convolutional.separable_conv1d import SeparableConv1D
+            from tensorflow.keras.layers import Conv1D, SeparableConv1D
             # pylint: enable=g-import-not-at-top
             if not isinstance(self, (Conv1D, SeparableConv1D)):
                 raise ValueError('Causal padding is only supported for `Conv1D`'

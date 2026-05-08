@@ -36,13 +36,16 @@ def callbacks_snn_train(model,train_ds_num,valid_ds,test_ds_num):
 
 
     # model checkpoint save and resume
+    # mode='max' required in Keras 3 — auto-detection dropped for custom metric names
+    _ckpt_mode = 'max' if 'acc' in monitor_cri else 'min'
     cb_model_checkpoint = lib_snn.callbacks.ModelCheckpointResume(
-        filepath=filepath_save + '/ep-{epoch:04d}.hdf5',
-        save_weight_only=True,
+        filepath=filepath_save + '/ep-{epoch:04d}.weights.h5',
+        save_weights_only=True,
         #save_best_only=True,
         save_best_only=conf.save_best_model_only,
         save_freq=save_freq,
         monitor=monitor_cri,
+        mode=_ckpt_mode,
         verbose=1,
         best=best,
         log_dir=path_tensorboard,

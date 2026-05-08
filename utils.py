@@ -1127,6 +1127,8 @@ def set_file_path(batch_size):
             config_nc += '-W'
         elif conf.neural_coding=='BURST':
             config_nc += '-B'
+        elif conf.neural_coding=='MULTISPIKE':
+            config_nc += '-MS'
         else:
             assert False
         config_name += config_nc

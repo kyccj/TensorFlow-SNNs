@@ -1,54 +1,57 @@
 
-from models.vgg16_tr import VGG16_TR
-#from models.vgg16 import VGG16
-from models.vgg11_func import VGG11
-from models.vgg16_func import VGG16
-from models.vgg_speck import VGG_SPECK
+def _try_import(import_fn):
+    try:
+        return import_fn()
+    except Exception:
+        return None
 
+# Core models - lazy imports to avoid keras.engine dependency in old files
+VGG16_TR = VGG11 = VGG16 = VGG_SPECK = None
+ResNet18 = ResNet19 = ResNet34 = ResNet50 = ResNet101 = ResNet152 = None
+ResNet20 = ResNet32 = ResNet44 = ResNet56 = None
+ResNet18V2 = ResNet34V2 = ResNet50V2 = None
+ResNet20V2 = ResNet32V2 = ResNet44V2 = ResNet56V2 = None
+ResNet20_SEW = ResNet34_MS = ResNet18_MS = ResNet32_MS = None
+MobileNetV2 = EfficientNetV2S = EfficientNetV2M = EfficientNetV2L = None
+spikformer = spikformer_tb = None
 
-from models.resnet import ResNet18
-from models.resnet import ResNet19
-from models.resnet import ResNet34
-from models.resnet import ResNet50
-from models.resnet import ResNet101
-from models.resnet import ResNet152
-
-from models.resnet import ResNet20
-from models.resnet import ResNet32
-from models.resnet import ResNet44
-from models.resnet import ResNet56
-
-from models.resnet import ResNet18V2
-from models.resnet import ResNet34V2
-from models.resnet import ResNet50V2
-
-from models.resnet import ResNet20V2
-from models.resnet import ResNet32V2
-from models.resnet import ResNet44V2
-from models.resnet import ResNet56V2
-
-# sew
-from models.resnet import ResNet20_SEW
-
-#ms
-from models.resnet import ResNet34_MS
-from models.resnet import ResNet18_MS
-from models.resnet import ResNet32_MS
-
-from models.spikformer import spikformer
-from models.spikformer_tb import spikformer_tb
+try:
+    from models.vgg16_tr import VGG16_TR
+except Exception: pass
+try:
+    from models.vgg11_func import VGG11
+except Exception: pass
+try:
+    from models.vgg16_func import VGG16
+except Exception: pass
+try:
+    from models.vgg_speck import VGG_SPECK
+except Exception: pass
+try:
+    from models.resnet import (ResNet18, ResNet19, ResNet34, ResNet50,
+                                ResNet101, ResNet152, ResNet20, ResNet32,
+                                ResNet44, ResNet56, ResNet18V2, ResNet34V2,
+                                ResNet50V2, ResNet20V2, ResNet32V2, ResNet44V2,
+                                ResNet56V2, ResNet20_SEW, ResNet34_MS,
+                                ResNet18_MS, ResNet32_MS)
+except Exception: pass
+try:
+    from models.spikformer import spikformer
+except Exception: pass
+try:
+    from models.spikformer_tb import spikformer_tb
+except Exception: pass
+try:
+    from models.mobilenet_v2 import MobileNetV2
+except Exception: pass
+try:
+    from models.efficientnet_v2 import EfficientNetV2S, EfficientNetV2M, EfficientNetV2L
+except Exception: pass
 
 from models.sdtv3 import sdtv3
-
-from models.mobilenet_v2 import MobileNetV2
-
-from models.efficientnet_v2 import EfficientNetV2S
-from models.efficientnet_v2 import EfficientNetV2M
-from models.efficientnet_v2 import EfficientNetV2L
+from models.sdtv3_mae import sdtv3_large_cls
 
 # model selector
-
-# models
 model_sel_tr = {
     'VGG16': VGG16_TR,
 }
@@ -82,12 +85,14 @@ model_sel_sc = {
     'EfficientNetV2S': EfficientNetV2S,
     'EfficientNetV2M': EfficientNetV2M,
     'EfficientNetV2L': EfficientNetV2L,
-    'Spikformer':spikformer,
+    'Spikformer': spikformer,
     'Spikformer_tb': spikformer_tb,
     'SDT_V3_tiny': sdtv3,
     'SDT_V3_small': sdtv3,
     'SDT_V3_medium': sdtv3,
     'SDT_V3_large': sdtv3,
+    'SDT_V3_MAE_base': sdtv3_large_cls,
+    'SDT_V3_MAE_large': sdtv3_large_cls,
 }
 
 

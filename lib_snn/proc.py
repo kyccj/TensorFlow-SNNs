@@ -1779,10 +1779,25 @@ def w_norm_data_channel_wise(self, f_norm, stat, dict_stat=None):
 
 def cal_total_num_neurons(self):
     total_num_neurons = 0
+    seen = set()
+
+    def _check(layer):
+        nonlocal total_num_neurons
+        if id(layer) in seen:
+            return
+        seen.add(id(layer))
+        if hasattr(layer, 'act') and isinstance(layer.act, lib_snn.neurons.Neuron):
+            total_num_neurons += layer.act.num_neurons
+
     for l in self.model.layers:
-        if hasattr(l, 'act'):
-            if isinstance(l.act, lib_snn.neurons.Neuron):
-                total_num_neurons += l.act.num_neurons
+        _check(l)
+    # Keras 3 fallback: walk node graph
+    if hasattr(self.model, '_nodes_by_depth'):
+        for depth_nodes in self.model._nodes_by_depth.values():
+            for node in depth_nodes:
+                op = getattr(node, 'operation', None) or getattr(node, 'layer', None)
+                if op is not None:
+                    _check(op)
 
     self.total_num_neurons = total_num_neurons
 

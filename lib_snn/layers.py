@@ -398,7 +398,7 @@ class Layer():
 
     #
     # def call_set_aside_for_future(self,input,training):
-    def call(self, input, training):
+    def call(self, input, training=None):
     #def call(self, input, **kwargs):
         #print('layer - {:}, training - {:}'.format(self.name,training))
         #print('layer call - {}'.format(self.name))
@@ -407,7 +407,7 @@ class Layer():
         #    print('layer name: {:}'.format(self.name))
 
         if training is None:
-            training = backend.learning_phase()
+            training = backend.learning_phase() if hasattr(backend, "learning_phase") else False
 
         # test - add noise to input
         #noise_input_layer = keras.layers.GaussianNoise(0.7)
@@ -1067,7 +1067,7 @@ class InputLayer(Layer, tf.keras.layers.InputLayer):
 
     # def call(self, inputs):
     # def call(self, inputs, *args, ** kwargs):
-    def call(self, inputs, training):
+    def call(self, inputs, training=None):
         #print('call input')
 
         assert False
@@ -1088,7 +1088,7 @@ class InputGenLayerTB(Layer, tf.keras.layers.Layer):
         # self.kernel=1           # dummy
         # self.bias=0
 
-    def call(self, inputs, training):
+    def call(self, inputs, training=None):
         # print('input gen layer - call')
         if conf.input_data_time_dim:
             inputs = inputs
@@ -1119,7 +1119,7 @@ class InputGenLayer(Layer, tf.keras.layers.Layer):
         #self.bias=0
         self.built_done = False
 
-    def call(self, inputs, training):
+    def call(self, inputs, training=None):
         # print('input gen layer - call')
         if conf.input_data_time_dim and not self.built_done:
 
@@ -1145,7 +1145,7 @@ class InputGenLayer(Layer, tf.keras.layers.Layer):
 
 
         #
-#    def call(self, inputs, training):
+#    def call(self, inputs, training=None):
 #        inputs_e = tf.TensorArray(dtype=tf.float32,
 #                             size=self.conf.time_step,element_shape=inputs.shape,clear_after_read=False)
 #
@@ -1382,7 +1382,7 @@ class Identity(Layer, tf.keras.layers.Layer):
         ##self.kernel = self.add_weight("kernel",shape=[],initializer='ones',trainable=False)
         #self.kernel = tf.Variable("kernel",shape=[],initializer='ones',trainable=False)
 
-    def call(self, inputs, training):
+    def call(self, inputs, training=None):
         ret = tf.multiply(inputs,self.kernel)
         ret = tf.add(ret,self.bias)
 

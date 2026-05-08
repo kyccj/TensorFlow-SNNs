@@ -1,5 +1,19 @@
-import keras.layers
 import tensorflow as tf
+import keras
+import keras.layers
+if not hasattr(keras, 'engine'):
+    import types, sys
+    _eng = types.ModuleType('keras.engine')
+    try:
+        import tf_keras.src.engine.base_layer as _bl
+        _eng.base_layer = _bl
+    except (ImportError, AttributeError):
+        class _FakeBaseLayer:
+            Layer = tf.keras.layers.Layer
+        _eng.base_layer = _FakeBaseLayer
+    keras.engine = _eng
+    sys.modules.setdefault('keras.engine', _eng)
+    sys.modules.setdefault('keras.engine.base_layer', _eng.base_layer)
 # import tensorflow.contrib.eager as tfe
 
 # import tensorflow_probability as tfp
@@ -169,7 +183,10 @@ class Activation(keras.engine.base_layer.Layer):
     #def call(self, inputs):
 
         if training is None:
-            training = backend.learning_phase()
+            try:
+                training = backend.learning_phase()
+            except AttributeError:
+                training = False
 
         #print(self.act)
         #print(self.name)

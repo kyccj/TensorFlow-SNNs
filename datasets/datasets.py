@@ -34,7 +34,7 @@ def load():
         'CIFAR10': datasets.image_cls,
         'CIFAR100': datasets.image_cls,
         #'CIFAR10_DVS': datasets.cifar10_dvs.CIFAR10DVS,
-        'CIFAR10_DVS': datasets.cifar10_dvs,
+        'CIFAR10_DVS': getattr(datasets, 'cifar10_dvs', None),
     }
     if dataset_name=='CIFAR10_DVS':
         #dataset = dataset_sel[dataset_name]()

@@ -80,7 +80,7 @@ class ModelCheckpointResume(tf.keras.callbacks.ModelCheckpoint):
         #if save_freq != 'epoch':
         #    assert False, 'only supported save_freq=epoch'
 
-        super(ModelCheckpointResume, self).__init__(
+        ckpt_kwargs = dict(
             filepath=filepath,
             monitor=monitor,
             verbose=verbose,
@@ -88,8 +88,11 @@ class ModelCheckpointResume(tf.keras.callbacks.ModelCheckpoint):
             save_weights_only=save_weights_only,
             mode=mode,
             save_freq=save_freq,
-            options=options,
             **kwargs)
+        try:
+            super(ModelCheckpointResume, self).__init__(options=options, **ckpt_kwargs)
+        except TypeError:
+            super(ModelCheckpointResume, self).__init__(**ckpt_kwargs)
 
         #if best is not None:
             #self.best = best
@@ -116,8 +119,10 @@ class ModelCheckpointResume(tf.keras.callbacks.ModelCheckpoint):
                 if self.monitor_op(current, self.best):
                     self.best = current
 
-        #print(self.best)
-        tf.summary.scalar('best_val_acc', data=self.best, step=epoch)
+        try:
+            tf.summary.scalar('best_val_acc', data=self.best, step=epoch)
+        except Exception:
+            pass
         logs['best_val_acc'] = self.best
 
 

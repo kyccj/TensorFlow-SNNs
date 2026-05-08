@@ -96,8 +96,13 @@ conf.SEL_en = 'base'
 # conf.SEL_model_dataset = 'R20_DVS'
 # conf.SEL_model_dataset = 'MS34_ImageNet'
 # conf.SEL_model_dataset = '34_ImageNet'
-conf.SEL_model_dataset = 'SDT_V3_C10'
+# conf.SEL_model_dataset = 'SDT_V3_C10'
 # conf.SEL_model_dataset = 'SDT_V3_C100'
+# conf.SEL_model_dataset = 'SDT_V3_L_C10'
+conf.SEL_model_dataset = 'SDT_V3_small_Img'
+# conf.SEL_model_dataset = 'SDT_V3_L_Img'
+# conf.SEL_model_dataset = 'SDT_V3_MAE_base_Img'
+# conf.SEL_model_dataset = 'SDT_V3_MAE_large_Img'
 # conf.SEL_model_dataset = 'Spik_C10'
 # conf.SEL_model_dataset = 'Spik_C100'
 # conf.SEL_model_dataset = 'Spik_Img'
@@ -315,6 +320,30 @@ elif conf.SEL_model_dataset == 'SDT_V3_L_C10':
     conf.reg_psp_SEL_const = 5e-6
     conf.reg_psp_SEL_BN_ratio_value = -0.8
     conf.reg_psp_SEL_BN_ratio_rate = 1e-4
+elif conf.SEL_model_dataset == 'SDT_V3_small_Img':
+    conf.model = 'SDT_V3_small'
+    conf.dataset = 'ImageNet'
+    conf.n_type = 'IF'
+    conf.neural_coding = 'MULTISPIKE'
+    conf.sdtv3_lens = 4
+    conf.sdtv3_num_heads = 8
+    conf.sdtv3_variant = 'small'
+    conf.time_step = 4
+    conf.train_epoch = 320
+    conf.optimizer = 'ADAMW'
+    conf.learning_rate = 6e-4
+    conf.weight_decay_AdamW = 0.05
+    conf.batch_size = 64
+    conf.label_smoothing = 0.1
+    conf.mix_off_iter = 0
+    conf.mix_alpha = 0.8
+    conf.randaug_mag_std = 0.5
+    conf.randaug_n = 2
+    conf.snn_training_spatial_first = True
+    conf.adaptive_dec_vth_scale = 0.8
+    conf.reg_psp_SEL_const = 5e-6
+    conf.reg_psp_SEL_BN_ratio_value = -0.8
+    conf.reg_psp_SEL_BN_ratio_rate = 1e-4
 elif conf.SEL_model_dataset == 'SDT_V3_L_Img':
     conf.model = 'SDT_V3_large'
     conf.dataset = 'ImageNet'
@@ -334,11 +363,49 @@ elif conf.SEL_model_dataset == 'SDT_V3_L_Img':
     conf.reg_psp_SEL_const = 5e-6
     conf.reg_psp_SEL_BN_ratio_value = -0.8
     conf.reg_psp_SEL_BN_ratio_rate = 1e-4
+elif conf.SEL_model_dataset == 'SDT_V3_MAE_base_Img':
+    # SpikMAE base (83M) fine-tuning on ImageNet after pretraining
+    conf.model = 'SDT_V3_MAE_base'
+    conf.dataset = 'ImageNet'
+    conf.n_type = 'IF'
+    conf.neural_coding = 'MULTISPIKE'
+    conf.sdtv3_lens = 4
+    conf.sdtv3_num_heads = 8
+    conf.time_step = 4
+    conf.train_epoch = 100
+    conf.optimizer = 'ADAMW'
+    conf.learning_rate = 1e-3
+    conf.weight_decay_AdamW = 0.05
+    conf.batch_size = 64
+    conf.label_smoothing = 0.1
+    conf.adaptive_dec_vth_scale = 0.8
+    conf.reg_psp_SEL_const = 5e-6
+    conf.reg_psp_SEL_BN_ratio_value = -0.8
+    conf.reg_psp_SEL_BN_ratio_rate = 1e-4
+elif conf.SEL_model_dataset == 'SDT_V3_MAE_large_Img':
+    # SpikMAE large (173M) fine-tuning on ImageNet after pretraining
+    conf.model = 'SDT_V3_MAE_large'
+    conf.dataset = 'ImageNet'
+    conf.n_type = 'IF'
+    conf.neural_coding = 'MULTISPIKE'
+    conf.sdtv3_lens = 4
+    conf.sdtv3_num_heads = 8
+    conf.time_step = 4
+    conf.train_epoch = 100
+    conf.optimizer = 'ADAMW'
+    conf.learning_rate = 1e-3
+    conf.weight_decay_AdamW = 0.05
+    conf.batch_size = 32
+    conf.label_smoothing = 0.1
+    conf.adaptive_dec_vth_scale = 0.8
+    conf.reg_psp_SEL_const = 5e-6
+    conf.reg_psp_SEL_BN_ratio_value = -0.8
+    conf.reg_psp_SEL_BN_ratio_rate = 1e-4
 
 if conf.dataset == 'CIFAR10_DVS':
     conf.learning_rate = 0.1
     conf.time_step = 16
-if conf.dataset == 'ImageNet':
+if conf.dataset == 'ImageNet' and 'SDT_V3' not in conf.model:
     conf.batch_size = 50
     conf.train_epoch = 100
     # conf.step_decay_epoch = 30

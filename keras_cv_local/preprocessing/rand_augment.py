@@ -15,22 +15,37 @@ import keras_cv
 import tensorflow as tf
 
 from keras_cv import core
-from keras_cv.layers import preprocessing as cv_preprocessing
-from keras_cv.layers.preprocessing.random_augmentation_pipeline import (
-    RandomAugmentationPipeline,
-)
-from keras_cv.utils import preprocessing as preprocessing_utils
+try:
+    from keras_cv.layers import preprocessing as cv_preprocessing
+    from keras_cv.layers.preprocessing.random_augmentation_pipeline import RandomAugmentationPipeline
+    from keras_cv.utils import preprocessing as preprocessing_utils
+    from keras_cv.utils import preprocessing
+except ImportError:
+    from keras_cv.src.layers import preprocessing as cv_preprocessing
+    from keras_cv.src.layers.preprocessing.random_augmentation_pipeline import RandomAugmentationPipeline
+    try:
+        from keras_cv.src.utils import preprocessing as preprocessing_utils
+        from keras_cv.src.utils import preprocessing
+    except ImportError:
+        from keras_cv.src import preprocessing as preprocessing_utils
+        preprocessing = preprocessing_utils
 
 import keras_cv_local
 
 import random
-from keras_cv.utils import preprocessing
 from keras import backend
 
+import numpy as np
 
+class _NumpyRandomGenerator:
+    def random_normal(self, shape, mean, stddev):
+        return float(np.random.normal(mean, stddev, shape)[0])
 
-_random_generator = backend.RandomGenerator()
-    #seed, force_generator=force_generator, rng_type=rng_type)
+try:
+    _random_generator = backend.RandomGenerator()
+    _ = _random_generator.random_normal([1], 0.5, 0.1)  # test it works
+except Exception:
+    _random_generator = _NumpyRandomGenerator()
 
 #@tf.keras.utils.register_keras_serializable(package="keras_cv")
 class RandAugment(RandomAugmentationPipeline):
@@ -156,7 +171,11 @@ class RandAugment(RandomAugmentationPipeline):
         )
 
         color = cv_preprocessing.RandomColorDegeneration(**policy["color"], seed=seed)
-        contrast = cv_preprocessing.RandomContrast(**policy["contrast"], seed=seed)
+        try:
+            contrast = cv_preprocessing.RandomContrast(**policy["contrast"], seed=seed)
+        except TypeError:
+            contrast_kw = {k: v for k, v in policy["contrast"].items() if k != 'value_range'}
+            contrast = cv_preprocessing.RandomContrast(**contrast_kw, seed=seed)
         brightness = cv_preprocessing.RandomBrightness(
             **policy["brightness"], value_range=value_range, seed=seed
         )
@@ -307,28 +326,16 @@ def shear_y_policy(magnitude, magnitude_stddev):
 
 
 def translate_x_policy(magnitude, magnitude_stddev):
-    # TODO(lukewood): should we integrate RandomTranslation with `factor`?
-    #factor = magnitude*0.45
-    #factor = (-factor, factor)
-
     scale = 0.45
-    factor = _random_generator.random_normal([1,],magnitude,magnitude_stddev)
-    factor *= scale
-
+    factor = _random_generator.random_normal([1,], magnitude, magnitude_stddev)
+    factor = abs(float(factor) * scale)
     return {"width_factor": factor, "height_factor": 0}
 
 
 def translate_y_policy(magnitude, magnitude_stddev):
-    # TODO(lukewood): should we integrate RandomTranslation with `factor`?
-    #factor = magnitude*0.45
-    #factor = (-factor, factor)
-    #scale = 0.45
-
     scale = 0.45
-    factor = _random_generator.random_normal([1,],magnitude,magnitude_stddev)
-    factor *= scale
-
-
+    factor = _random_generator.random_normal([1,], magnitude, magnitude_stddev)
+    factor = abs(float(factor) * scale)
     return {"width_factor": 0, "height_factor": factor}
 
 

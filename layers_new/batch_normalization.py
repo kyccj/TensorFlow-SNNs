@@ -15,18 +15,58 @@
 """The V2 implementation of Normalization layers."""
 
 import tensorflow.compat.v2 as tf
-from keras import backend
-from keras import constraints
-from keras import initializers
-from keras import regularizers
-from keras.dtensor import utils
-from keras.engine.base_layer import Layer
-from keras.engine.input_spec import InputSpec
-from keras.utils import control_flow_util
-from keras.utils import tf_utils
-from tensorflow.python.ops.control_flow_ops import get_enclosing_xla_context
-from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.util.tf_export import keras_export
+from tensorflow.keras import backend, constraints, initializers, regularizers
+from tensorflow.keras.layers import Layer, InputSpec
+
+class utils:
+    @staticmethod
+    def allow_initializer_layout(fn):
+        return fn
+
+class control_flow_util:
+    @staticmethod
+    def constant_value(v):
+        import tensorflow as tf
+        try:
+            return tf.get_static_value(v)
+        except Exception:
+            return None
+
+    @staticmethod
+    def smart_cond(pred, true_fn=None, false_fn=None, name=None):
+        import tensorflow as tf
+        static = tf.get_static_value(pred)
+        if static is not None:
+            return true_fn() if static else false_fn()
+        return tf.cond(tf.cast(pred, tf.bool), true_fn, false_fn)
+
+class tf_utils:
+    @staticmethod
+    def is_tensor_or_variable(v):
+        return isinstance(v, (tf.Tensor, tf.Variable))
+    @staticmethod
+    def validate_axis(axis, input_shape):
+        ndims = len(input_shape)
+        if isinstance(axis, (list, tuple)):
+            return [a if a >= 0 else ndims + a for a in axis]
+        else:
+            return [axis if axis >= 0 else ndims + axis]
+
+try:
+    from tensorflow.python.ops.control_flow_ops import get_enclosing_xla_context
+except (ImportError, AttributeError):
+    def get_enclosing_xla_context():
+        return None
+
+try:
+    from tensorflow.python.platform import tf_logging as logging
+except (ImportError, AttributeError):
+    import logging
+
+def keras_export(*args, **kwargs):
+    def decorator(fn):
+        return fn
+    return decorator
 
 #
 #from config import conf
@@ -281,7 +321,8 @@ class BatchNormalizationBase(Layer):
             raise ValueError('Passing `fused=True` is not supported when '
                              '`adjustment` is specified.')
         # TODO(reedwm): Support fp64 in FusedBatchNorm then remove this check.
-        if self._compute_dtype not in ('float16', 'bfloat16', 'float32', None):
+        _cdt = getattr(self, '_compute_dtype', None) or getattr(self, 'compute_dtype', None)
+        if _cdt not in ('float16', 'bfloat16', 'float32', None):
             raise ValueError(
                 'Passing `fused=True` is only supported when the compute '
                 'dtype is float16, bfloat16, or float32. Got dtype: %s' %
@@ -426,11 +467,11 @@ class BatchNormalizationBase(Layer):
                 regularizer=self.gamma_regularizer,
                 constraint=self.gamma_constraint,
                 trainable=True,
-                experimental_autocast=False)
+                )
         else:
             self.gamma = None
             if self.fused:
-                self._gamma_const = backend.constant(
+                self._gamma_const = tf.constant(
                     1.0, dtype=self._param_dtype, shape=param_shape)
 
         if self.center:
@@ -442,11 +483,11 @@ class BatchNormalizationBase(Layer):
                 regularizer=self.beta_regularizer,
                 constraint=self.beta_constraint,
                 trainable=True,
-                experimental_autocast=False)
+                )
         else:
             self.beta = None
             if self.fused:
-                self._beta_const = backend.constant(
+                self._beta_const = tf.constant(
                     0.0, dtype=self._param_dtype, shape=param_shape)
 
         try:
@@ -461,20 +502,20 @@ class BatchNormalizationBase(Layer):
                 shape=param_shape,
                 dtype=self._param_dtype,
                 initializer=self.moving_mean_initializer,
-                synchronization=tf.VariableSynchronization.ON_READ,
+                
                 trainable=False,
-                aggregation=tf.VariableAggregation.MEAN,
-                experimental_autocast=False)
+                
+                )
 
             self.moving_variance = self.add_weight(
                 name='moving_variance',
                 shape=param_shape,
                 dtype=self._param_dtype,
                 initializer=self.moving_variance_initializer,
-                synchronization=tf.VariableSynchronization.ON_READ,
+                
                 trainable=False,
-                aggregation=tf.VariableAggregation.MEAN,
-                experimental_autocast=False)
+                
+                )
 
             if self.renorm:
                 # In batch renormalization we track the inference moving stddev instead
@@ -490,10 +531,10 @@ class BatchNormalizationBase(Layer):
                         shape=param_shape,
                         dtype=self._param_dtype,
                         initializer=moving_stddev_initializer,
-                        synchronization=tf.VariableSynchronization.ON_READ,
+                        
                         trainable=False,
-                        aggregation=tf.VariableAggregation.MEAN,
-                        experimental_autocast=False)
+                        
+                        )
 
                 # Create variables to maintain the moving mean and standard deviation.
                 # These are used in training and thus are different from the moving
@@ -511,10 +552,10 @@ class BatchNormalizationBase(Layer):
                         shape=shape,
                         dtype=self._param_dtype,
                         initializer=initializer,
-                        synchronization=tf.VariableSynchronization.ON_READ,
+                        
                         trainable=False,
-                        aggregation=tf.VariableAggregation.MEAN,
-                        experimental_autocast=False)
+                        
+                        )
                     return var
 
                 with tf.distribute.get_strategy(
@@ -537,8 +578,10 @@ class BatchNormalizationBase(Layer):
         def calculate_update_delta():
             decay = tf.convert_to_tensor(
                 1.0 - momentum, name='decay')
-            if decay.dtype != variable.dtype.base_dtype:
-                decay = tf.cast(decay, variable.dtype.base_dtype)
+            _var_dtype = variable.dtype
+            _var_dtype = _var_dtype.base_dtype if hasattr(_var_dtype, 'base_dtype') else tf.as_dtype(_var_dtype)
+            if decay.dtype != _var_dtype:
+                decay = tf.cast(decay, _var_dtype)
             update_delta = (variable - tf.cast(value, variable.dtype)) * decay
             if inputs_size is not None:
                 update_delta = tf.where(inputs_size > 0, update_delta,
@@ -547,7 +590,10 @@ class BatchNormalizationBase(Layer):
 
         with backend.name_scope('AssignMovingAvg') as scope:
             if tf.compat.v1.executing_eagerly_outside_functions():
-                return variable.assign_sub(calculate_update_delta(), name=scope)
+                try:
+                    return variable.assign_sub(calculate_update_delta(), name=scope)
+                except TypeError:
+                    return variable.assign_sub(calculate_update_delta())
             else:
                 with tf.compat.v1.colocate_with(
                         variable):  # pylint: disable=protected-access
@@ -557,7 +603,10 @@ class BatchNormalizationBase(Layer):
     def _assign_new_value(self, variable, value):
         with backend.name_scope('AssignNewValue') as scope:
             if tf.compat.v1.executing_eagerly_outside_functions():
-                return variable.assign(value, name=scope)
+                try:
+                    return variable.assign(value, name=scope)
+                except TypeError:
+                    return variable.assign(value)
             else:
                 with tf.compat.v1.colocate_with(
                         variable):  # pylint: disable=protected-access
@@ -685,8 +734,12 @@ class BatchNormalizationBase(Layer):
                                                        momentum,
                                                        input_batch_size)
 
-            self.add_update(mean_update)
-            self.add_update(variance_update)
+            if hasattr(self, 'add_update'):
+                self.add_update(mean_update)
+                self.add_update(variance_update)
+            else:
+                mean_update()
+                variance_update()
 
         return output
 
@@ -822,7 +875,8 @@ class BatchNormalizationBase(Layer):
                 outputs = undo_virtual_batching(outputs)
             return outputs
 
-        inputs_dtype = inputs.dtype.base_dtype
+        _dtype = inputs.dtype
+        inputs_dtype = _dtype.base_dtype if hasattr(_dtype, 'base_dtype') else tf.as_dtype(_dtype)
         if inputs_dtype in (tf.float16, tf.bfloat16):
             # Do all math in float32 if given 16-bit inputs for numeric stability.
             # In particular, it's very easy for variance to overflow in float16 and
@@ -958,8 +1012,12 @@ class BatchNormalizationBase(Layer):
                 return control_flow_util.smart_cond(training, true_branch,
                                                     false_branch)
 
-            self.add_update(mean_update)
-            self.add_update(variance_update)
+            if hasattr(self, 'add_update'):
+                self.add_update(mean_update)
+                self.add_update(variance_update)
+            else:
+                mean_update()
+                variance_update()
 
 
         #

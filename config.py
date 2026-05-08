@@ -13,6 +13,34 @@ import flags
 from absl import flags
 conf = flags.FLAGS
 
+# Keras 2 compatibility: patch keras.engine for TF 2.21+ which removed it
+import sys as _sys
+import keras as _keras
+if not hasattr(_keras, 'engine'):
+    try:
+        import tf_keras.src.engine as _tf_keras_engine
+        import types as _types
+        _eng_mod = _types.ModuleType('keras.engine')
+        for _attr in dir(_tf_keras_engine):
+            try:
+                setattr(_eng_mod, _attr, getattr(_tf_keras_engine, _attr))
+            except Exception:
+                pass
+        _keras.engine = _eng_mod
+        _sys.modules['keras.engine'] = _eng_mod
+        # register sub-modules
+        for _sub in ['base_layer', 'input_layer', 'training', 'functional',
+                     'data_adapter', 'compile_utils']:
+            try:
+                _sub_mod = getattr(_tf_keras_engine, _sub)
+                _sys.modules[f'keras.engine.{_sub}'] = _sub_mod
+                _sys.modules[f'tensorflow.python.keras.engine.{_sub}'] = _sub_mod
+            except AttributeError:
+                pass
+        _sys.modules['tensorflow.python.keras.engine'] = _eng_mod
+    except (ImportError, AttributeError):
+        pass
+
 
 import os
 
@@ -30,7 +58,10 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 
 import matplotlib
-matplotlib.use('TkAgg')
+try:
+    matplotlib.use('TkAgg')
+except Exception:
+    matplotlib.use('Agg')
 
 import re
 import shutil
@@ -297,4 +328,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 
 import matplotlib
-matplotlib.use('TkAgg')
+try:
+    matplotlib.use('TkAgg')
+except Exception:
+    matplotlib.use('Agg')

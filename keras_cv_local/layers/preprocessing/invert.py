@@ -1,11 +1,14 @@
 import tensorflow as tf
 
-
-
-from keras_cv.layers.preprocessing.base_image_augmentation_layer import (
-    BaseImageAugmentationLayer,
-)
-from keras_cv.utils import preprocessing
+try:
+    from keras_cv.layers.preprocessing.base_image_augmentation_layer import BaseImageAugmentationLayer
+    from keras_cv.utils import preprocessing
+except (ImportError, ModuleNotFoundError):
+    from keras_cv.src.layers.preprocessing.base_image_augmentation_layer import BaseImageAugmentationLayer
+    try:
+        from keras_cv.src.utils import preprocessing
+    except ImportError:
+        preprocessing = None
 
 
 @tf.keras.utils.register_keras_serializable(package="keras_cv")
