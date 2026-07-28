@@ -2018,3 +2018,41 @@ def l2_norm(x,name):
         return ret_grad, None
 
     return out, grad
+
+
+@tf.custom_gradient
+def l2_norm_wta_rev(x, sc_rate, name):
+    """L2 norm with gradient flow to non-firing neurons.
+    Forward: sqrt(sum(x^2)), same as l2_norm
+    Backward: sc_rate/||x|| instead of x/||x||, so spike=0 neurons get non-zero gradient
+    """
+    out = tf.sqrt(tf.reduce_sum(tf.square(x)))
+
+    def grad(upstream):
+        # x = spike * sc_rate
+        # standard gradient: x / ||x|| -> zero when spike=0
+        # modified gradient: sc_rate / ||x|| -> non-zero for all neurons
+        dy_dx = tf.multiply(sc_rate, tf.math.rsqrt(tf.reduce_sum(tf.square(x))))
+        condition = tf.math.count_nonzero(x, dtype=tf.int32) == 0
+        ret_grad = tf.where(condition, tf.zeros(upstream.shape), upstream * dy_dx)
+
+        if conf.verbose_snn_train:
+            print('l2_norm_wta_rev - {:}'.format(name))
+
+            var = x
+            print('{:} - max {:.3g}, min {:.3g}, mean {:.3g}, std {:.3g}, non_zero {:.3g}'
+                  .format('inputs',tf.reduce_max(var),tf.reduce_min(var),tf.reduce_mean(var),tf.math.reduce_std(var),tf.math.count_nonzero(var,dtype=tf.int32)/tf.math.reduce_prod(var.shape)))
+
+            var = upstream
+            print('{:} - max {:.3g}, min {:.3g}, mean {:.3g}, std {:.3g}'
+                  .format('y_backprop',tf.reduce_max(var),tf.reduce_min(var),tf.reduce_mean(var),tf.math.reduce_std(var)))
+
+            var = ret_grad
+            print('{:} - max {:.3g}, min {:.3g}, mean {:.3g}, std {:.3g}'
+                  .format('dx',tf.reduce_max(var),tf.reduce_min(var),tf.reduce_mean(var),tf.math.reduce_std(var)))
+
+            print('')
+
+        return ret_grad, None, None
+
+    return out, grad

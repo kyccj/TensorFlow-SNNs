@@ -818,6 +818,48 @@ flags.DEFINE_bool('reg_spike_out_sc_sm_wo_tmp',False,'regularization - sc sm w/o
 flags.DEFINE_bool('reg_spike_out_sc_sm_wo_spa',False,'regularization - sc sm w/o spatial info from other neurons in a layer')
 flags.DEFINE_bool('reg_spike_out_inv_s',False,'regularization - spike inversion')
 flags.DEFINE_bool('reg_spike_out_inv_s_const',False,'regularization - spike inversion const')
+flags.DEFINE_bool('reg_spike_out_wta_rev',False,'regularization - revised WTA: reduce_mean instead of L2 norm for gradient flow to non-firing neurons')
+flags.DEFINE_bool('reg_spike_out_sc_maxnorm',False,'regularization - max-normalization for sc_rate instead of softmax')
+flags.DEFINE_bool('reg_spike_out_encourage',False,'regularization - encourage winners to fire: loss += l2_norm((1-spike)*(1-sc_rate))')
+flags.DEFINE_bool('reg_spike_out_entropy',False,'regularization - entropy-based WTA: sc_rate from entropy gradient -(1+log(p))')
+flags.DEFINE_bool('reg_spike_out_rev_softmax',False,'regularization - reverse softmax WTA: softmax(-spike_count/T) to suppress losers, protect winners')
+flags.DEFINE_float('reg_spike_out_rev_softmax_T',1.0,'reverse softmax temperature: lower = sharper WTA')
+
+flags.DEFINE_bool('reg_spike_channel_wise',False,'channel-wise WTA: softmax over channels (C) instead of all neurons (C*H*W)')
+flags.DEFINE_bool('reg_spike_accum_loss',False,'accumulate sc_loss across time steps, apply L2 norm once at last time step (norm of sum instead of sum of norms)')
+
+flags.DEFINE_bool('reg_spike_adaptive',False,'adaptive lambda: start reg after start_ep, adjust based on accuracy feedback')
+flags.DEFINE_integer('reg_spike_adaptive_start_ep',200,'adaptive lambda: epoch to start applying spike reg')
+flags.DEFINE_float('reg_spike_adaptive_lambda_init',1E-9,'adaptive lambda: initial lambda value')
+flags.DEFINE_float('reg_spike_adaptive_margin',0.005,'adaptive lambda: accuracy margin (delta) for gating')
+flags.DEFINE_float('reg_spike_adaptive_step_up',0.3,'adaptive lambda: multiplicative increase rate when acc is maintained')
+flags.DEFINE_float('reg_spike_adaptive_step_down',0.5,'adaptive lambda: multiplicative decrease rate when acc drops')
+flags.DEFINE_float('reg_spike_adaptive_lambda_max',1E-5,'adaptive lambda: upper bound for lambda')
+flags.DEFINE_float('reg_spike_adaptive_lambda_min',0,'adaptive lambda: lower bound for lambda (0=auto: lambda_init*0.01)')
+
+flags.DEFINE_integer('reg_spike_end_ep',0,'epoch to stop spike reg (0=never stop, reg runs until end of training)')
+flags.DEFINE_bool('reg_spike_lr_linked',False,'lambda follows inverse cosine LR schedule: low when LR high, high when LR low')
+flags.DEFINE_float('reg_spike_lr_linked_power',1.0,'power exponent for LR-linked schedule: higher = more reg concentrated at end')
+flags.DEFINE_integer('reg_spike_lr_linked_start_ep',20,'epoch to start LR-linked lambda ramp (default=20, warmup end)')
+flags.DEFINE_bool('reg_spike_lr_linked_safety',False,'LR-linked + adaptive safety: halve lambda if accuracy drops >2%p from best')
+flags.DEFINE_integer('reg_spike_adaptive_window',1,'adaptive lambda: number of epochs for moving average accuracy comparison')
+
+flags.DEFINE_bool('reg_spike_sc_feedback',False,'spike-count feedback: adjust lambda to drive spike count toward target')
+flags.DEFINE_float('reg_spike_sc_target',40000,'spike-count feedback: target total spike count')
+
+flags.DEFINE_bool('reg_spike_loss_ratio',False,'loss-ratio feedback: adjust lambda to maintain reg_loss/task_loss ratio')
+flags.DEFINE_float('reg_spike_loss_ratio_target',0.005,'loss-ratio feedback: target ratio of reg_loss to task_loss')
+
+flags.DEFINE_bool('reg_spike_epoch_ramp',False,'epoch-based lambda ramp: lambda = lmax * (epoch/total)^power, no LR dependency')
+flags.DEFINE_float('reg_spike_epoch_ramp_power',3.0,'epoch ramp: power exponent')
+
+flags.DEFINE_bool('reg_spike_grow',False,'grow-until-interference: lambda grows from tiny value while task loss unaffected, backs off on 2-sigma deviation')
+flags.DEFINE_float('reg_spike_grow_init',1e-10,'grow: initial lambda (insensitive, just shifts timeline)')
+flags.DEFINE_float('reg_spike_grow_rate',1.2,'grow: multiplicative growth per epoch when no interference')
+flags.DEFINE_float('reg_spike_grow_decay',0.5,'grow: multiplicative decay on interference detection')
+flags.DEFINE_float('reg_spike_grow_sigma_k',2.0,'grow: sigma multiplier for interference test (loss > EMA + k*sigma)')
+
+flags.DEFINE_bool('reg_spike_log_detail',False,'log per-layer spike regularization metrics')
 
 
 # regularization - postsynaptic potential (PSP)

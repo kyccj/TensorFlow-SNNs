@@ -199,6 +199,12 @@ if True:
         #conf.reg_spike_out_sc_sq=True
         conf.reg_spike_out_norm=True
         #conf.reg_spike_out_norm_sq=True
+        #conf.reg_spike_out_wta_rev=True    # revised WTA: reduce_mean (gradient to non-firing neurons)
+        #conf.reg_spike_out_sc_maxnorm=True  # max-normalization: spike_count/max(spike_count), strong WTA
+        #conf.reg_spike_out_encourage=True   # encourage winners to fire: loss += l2_norm((1-spike)*(1-sc_rate))
+        #conf.reg_spike_out_entropy=True    # entropy-based WTA: weight = -(1+log(p)), moderate differentiation
+
+        #conf.reg_spike_log_detail=True   # per-layer regularization metrics logging
 
         #
         #conf.reg_spike_out_sc_sm_wo_tmp=True

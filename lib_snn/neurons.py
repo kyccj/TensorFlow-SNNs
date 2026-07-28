@@ -266,6 +266,17 @@ class Neuron(tf.keras.layers.Layer):
         self.f_fire = tf.Variable(initial_value=tf.constant(False,dtype=tf.bool,shape=self.dim), trainable=False, name="f_fire")
         # shape=self.dim, dtype=tf.bool, trainable=False, name="f_fire")
 
+        if conf.reg_spike_log_detail:
+            self.sc_rate_snap = tf.Variable(0.0, trainable=False, name="sc_rate_snap")
+            self.sc_loss_snap = tf.Variable(0.0, trainable=False, name="sc_loss_snap")
+            self.firing_rate_snap = tf.Variable(0.0, trainable=False, name="firing_rate_snap")
+            self.firing_rate_std_snap = tf.Variable(0.0, trainable=False, name="firing_rate_std_snap")
+            self.sc_rate_std_snap = tf.Variable(0.0, trainable=False, name="sc_rate_std_snap")
+            self.dead_neuron_ratio_snap = tf.Variable(0.0, trainable=False, name="dead_neuron_ratio_snap")
+            self.gini_snap = tf.Variable(0.0, trainable=False, name="gini_snap")
+            self.top10_share_snap = tf.Variable(0.0, trainable=False, name="top10_share_snap")
+            self.entropy_snap = tf.Variable(0.0, trainable=False, name="entropy_snap")
+
 
 
         #
@@ -795,6 +806,11 @@ class Neuron(tf.keras.layers.Layer):
                     def softmax_over_non_batch(x):
                         x_shape = tf.shape(x)
                         b=x_shape[0]
+                        if conf.reg_spike_channel_wise and len(x.shape) == 4:
+                            x_channel = tf.reduce_sum(x, axis=[2,3])
+                            y_channel = tf.nn.softmax(x_channel, axis=-1)
+                            y = y_channel[:, :, tf.newaxis, tf.newaxis]
+                            return tf.broadcast_to(y, x_shape)
                         x2 = tf.reshape(x, [b,-1])
                         y2 = tf.nn.softmax(x2, axis=-1)
                         return tf.reshape(y2, x_shape)
@@ -827,7 +843,32 @@ class Neuron(tf.keras.layers.Layer):
                         #sc_norm = tf.nn.softmax(sc,axis=reduce_axis)
                         #print(sc_norm)
                         #sc_rate = tf.square(1.0 - sc_norm)
-                        if conf.reg_spike_out_sc_wta:
+                        if conf.reg_spike_out_rev_softmax:
+                            # Reverse softmax WTA: softmax(-spike_count/T)
+                            # Winners (high spike) → low weight → protected
+                            # Losers (low spike) → high weight → suppressed via wta_rev gradient
+                            b = tf.shape(spike)[0]
+                            sc_flat = tf.stop_gradient(tf.reshape(self.spike_count, [b, -1]))
+                            T = conf.reg_spike_out_rev_softmax_T
+                            neg_sc = -sc_flat / T
+                            rev_sm = tf.nn.softmax(neg_sc, axis=1)  # sum=1 per sample
+                            n_neurons = tf.cast(tf.shape(sc_flat)[1], tf.float32)
+                            sc_rate = tf.reshape(rev_sm * n_neurons, tf.shape(spike))  # mean=1 normalization
+                        elif conf.reg_spike_out_entropy:
+                            # Entropy-based WTA weight: -(1+log(p)), mean-normalized
+                            b = tf.shape(spike)[0]
+                            sc_flat = tf.stop_gradient(tf.reshape(self.spike_count, [b, -1]))
+                            sc_sum = tf.reduce_sum(sc_flat, axis=1, keepdims=True)
+                            p = sc_flat / (sc_sum + 1e-8)
+                            ent_weight = -(1.0 + tf.math.log(p + 1e-8))
+                            ent_weight = ent_weight / (tf.reduce_mean(ent_weight, axis=1, keepdims=True) + 1e-8)
+                            sc_rate = tf.reshape(ent_weight, tf.shape(spike))
+                        elif conf.reg_spike_out_sc_maxnorm:
+                            # max-normalization: sc_norm in [0,1], winner=1, loser=0
+                            sc_max = tf.reduce_max(self.spike_count, axis=reduce_axis, keepdims=True)
+                            sc_norm = tf.math.divide_no_nan(self.spike_count, sc_max)
+                            sc_rate = 1.0 - sc_norm
+                        elif conf.reg_spike_out_wta_rev or conf.reg_spike_out_sc_wta:
                             sc_rate = 1.0 - sc_norm
                         else:
                             sc_rate = sc_norm
@@ -867,14 +908,70 @@ class Neuron(tf.keras.layers.Layer):
                     else:
                         sc_loss = spike*sc_rate
 
-                    if conf.reg_spike_out_norm:
+                    if conf.reg_spike_accum_loss:
+                        if t == 1:
+                            self._sc_loss_parts = [sc_loss]
+                        else:
+                            self._sc_loss_parts.append(sc_loss)
+                        if t == conf.time_step:
+                            sc_loss = tf.add_n(self._sc_loss_parts)
+
+                    # encourage term: penalize winners for NOT firing
+                    if conf.reg_spike_out_encourage:
+                        sc_loss_enc = (1.0 - spike) * (1.0 - sc_rate)
+
+                    if conf.reg_spike_out_wta_rev:
+                        # revised WTA: L2 norm forward, modified gradient for non-firing neurons
+                        # standard L2 gradient: x/||x|| -> zero when spike=0
+                        # modified gradient: sc_rate/||x|| -> non-zero for all neurons
+                        sc_loss = lib_snn.layers.l2_norm_wta_rev(sc_loss, sc_rate, self.name)
+                        if conf.reg_spike_out_encourage:
+                            sc_loss_enc = lib_snn.layers.l2_norm(sc_loss_enc, self.name)
+                    elif conf.reg_spike_out_norm:
                         #sc_loss = tf.norm(self.out * sc_rate,ord=2)
                         sc_loss = lib_snn.layers.l2_norm(sc_loss,self.name)
+                        if conf.reg_spike_out_encourage:
+                            sc_loss_enc = lib_snn.layers.l2_norm(sc_loss_enc, self.name)
                     elif conf.reg_spike_out_norm_sq:
                         sc_loss = tf.reduce_mean(tf.math.square(spike))
                     else:
                         sc_loss = tf.reduce_mean(sc_loss)
-                    sc_loss = sc_loss*conf.reg_spike_out_const
+                        if conf.reg_spike_out_encourage:
+                            sc_loss_enc = tf.reduce_mean(sc_loss_enc)
+
+                    if conf.reg_spike_out_encourage:
+                        sc_loss = sc_loss + sc_loss_enc
+                    if conf.reg_spike_log_detail:
+                        self.sc_rate_snap.assign(tf.reduce_mean(sc_rate))
+                        self.sc_loss_snap.assign(sc_loss)
+                        self.firing_rate_snap.assign(tf.reduce_mean(spike))
+
+                        # sc_rate_std (needs sc_rate, only available inside reg_spike_out)
+                        b = tf.shape(spike)[0]
+                        sc_rate_flat = tf.reshape(sc_rate, [b, -1])
+                        self.sc_rate_std_snap.assign(tf.reduce_mean(tf.math.reduce_std(sc_rate_flat, axis=1)))
+
+                    if conf.reg_spike_lr_linked:
+                        train_counter = lib_snn.model.train_counter
+                        start_steps = conf.reg_spike_lr_linked_start_ep * 500
+                        total_steps = conf.train_epoch * 500
+                        progress = tf.cast(train_counter - start_steps, tf.float32) / tf.cast(total_steps - start_steps, tf.float32)
+                        progress = tf.clip_by_value(progress, 0.0, 1.0)
+                        lr_factor = 0.5 * (1.0 + tf.math.cos(np.pi * progress))
+                        effective_lambda = conf.reg_spike_out_const * tf.pow(1.0 - lr_factor, conf.reg_spike_lr_linked_power)
+                        if conf.reg_spike_lr_linked_safety:
+                            effective_lambda = effective_lambda * lib_snn.model.lr_linked_safety_mult
+                        sc_loss = sc_loss * effective_lambda
+                    elif conf.reg_spike_epoch_ramp:
+                        train_counter = lib_snn.model.train_counter
+                        total_steps = conf.train_epoch * 500
+                        progress = tf.clip_by_value(tf.cast(train_counter, tf.float32) / tf.cast(total_steps, tf.float32), 0.0, 1.0)
+                        effective_lambda = conf.reg_spike_out_const * tf.pow(progress, conf.reg_spike_epoch_ramp_power)
+                        sc_loss = sc_loss * effective_lambda
+                    elif conf.reg_spike_adaptive or conf.reg_spike_sc_feedback or conf.reg_spike_loss_ratio or conf.reg_spike_grow:
+                        sc_loss = sc_loss * lib_snn.model.adaptive_lambda
+                    else:
+                        sc_loss = sc_loss*conf.reg_spike_out_const
 
                     #self.add_loss(conf.reg_spike_out_const*tf.reduce_mean(self.out * (self.reg_spike_out_b-sc_norm*self.reg_spike_out_a)))
                     #self.add_loss(conf.reg_spike_o230822ut_const * tf.reduce_mean(self.out * self.spike_count))
@@ -883,18 +980,16 @@ class Neuron(tf.keras.layers.Layer):
                     # default
                     #self.add_loss(sc_loss)
 
-                    if conf.sc_loss_scd:
+                    if conf.reg_spike_end_ep > 0:
+                        train_counter = lib_snn.model.train_counter
+                        end_itr = conf.reg_spike_end_ep * 500
+                        sc_loss_schedule = tf.where(train_counter < end_itr, 1.0, 0.0)
+                    elif conf.sc_loss_scd:
                         # sc_loss schedule
                         train_counter = lib_snn.model.train_counter
                         sc_loss_st_itr = conf.sc_loss_scd_st_ep*500
-                        #sc_loss_st_itr = 100*500
-                        #sc_loss_end_itr = 300*500
-                        #sc_loss_end_itr = 200*500
-                        #sc_loss_end_itr = 100*500
                         sc_loss_end_itr = conf.sc_loss_scd_end_ep*500
-                        #sc_loss_schedule = tf.where((train_counter>sc_loss_st_itr) and (train_counter<sc_loss_end_itr), 1.0, 0.0)
                         sc_loss_schedule = tf.cast(train_counter/sc_loss_end_itr,tf.float32)
-                        #sc_loss_schedule = 1-tf.cast(train_counter/sc_loss_end_itr,tf.float32)
                         sc_loss_schedule = tf.where(tf.logical_and((train_counter>sc_loss_st_itr),(train_counter<sc_loss_end_itr)), sc_loss_schedule, 0.0)
                     else:
                         sc_loss_schedule = 1.0
@@ -907,7 +1002,8 @@ class Neuron(tf.keras.layers.Layer):
                     else:
                         sc_loss_layer_wise_rate = 1.0
 
-                    self.add_loss(sc_loss * sc_loss_layer_wise_rate * sc_loss_schedule)
+                    if not (conf.reg_spike_accum_loss and t < conf.time_step):
+                        self.add_loss(sc_loss * sc_loss_layer_wise_rate * sc_loss_schedule)
 
 
                     if False:
@@ -1001,6 +1097,45 @@ class Neuron(tf.keras.layers.Layer):
                 cond = tf.math.logical_or(self.spike_count_int==t, self.spike_count_int==tf.constant(1,shape=self.spike_count_int.shape,dtype=tf.float32))
                 out_ret = tf.where(cond,out_ret,tf.zeros(shape=out_ret.shape))
 
+
+        # neuron-level distribution metrics (independent of reg_spike_out)
+        if conf.reg_spike_log_detail and self.loc == 'HID':
+            b = tf.shape(out_ret)[0]
+            spike_flat = tf.reshape(out_ret, [b, -1])
+            sci_flat = tf.reshape(self.spike_count_int, [b, -1])
+
+            # firing_rate_std: std across neurons, mean over batch
+            self.firing_rate_std_snap.assign(tf.reduce_mean(tf.math.reduce_std(spike_flat, axis=1)))
+
+            # dead_neuron_ratio: fraction of neurons with 0 spikes (batch mean)
+            dead = tf.reduce_mean(tf.cast(sci_flat == 0, tf.float32), axis=1)
+            self.dead_neuron_ratio_snap.assign(tf.reduce_mean(dead))
+
+            # gini coefficient (batch mean)
+            sci_mean = tf.reduce_mean(tf.cast(sci_flat, tf.float32), axis=0)  # [neurons]
+            sci_sorted = tf.sort(sci_mean)
+            n = tf.cast(tf.shape(sci_sorted)[0], tf.float32)
+            idx = tf.cast(tf.range(1, tf.shape(sci_sorted)[0] + 1), tf.float32)
+            total = tf.reduce_sum(sci_sorted)
+            gini = tf.cond(total > 0,
+                lambda: (2.0 * tf.reduce_sum(idx * sci_sorted) / (n * total)) - (n + 1.0) / n,
+                lambda: 0.0)
+            self.gini_snap.assign(gini)
+
+            # top10_share: fraction of spikes from top 10% neurons
+            k = tf.maximum(tf.shape(sci_mean)[0] // 10, 1)
+            top_k = tf.math.top_k(sci_mean, k=k).values
+            self.top10_share_snap.assign(tf.reduce_sum(top_k) / tf.maximum(total, 1e-8))
+
+            # entropy: normalized entropy of spike distribution (0=concentrated, 1=uniform)
+            if conf.reg_spike_out_entropy:
+                sc_flat_ent = tf.reshape(self.spike_count, [b, -1])
+                sc_sum_ent = tf.reduce_sum(sc_flat_ent, axis=1, keepdims=True)
+                p_ent = sc_flat_ent / (sc_sum_ent + 1e-8)
+                ent_per_sample = -tf.reduce_sum(p_ent * tf.math.log(p_ent + 1e-8), axis=1)
+                n_neurons = tf.cast(tf.shape(sc_flat_ent)[1], tf.float32)
+                ent_normalized = tf.reduce_mean(ent_per_sample) / (tf.math.log(n_neurons) + 1e-8)
+                self.entropy_snap.assign(ent_normalized)
 
         # neuron input analysis
         if conf.debug_neuron_input:

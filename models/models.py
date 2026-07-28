@@ -49,7 +49,10 @@ try:
 except Exception: pass
 
 from models.sdtv3 import sdtv3
-from models.sdtv3_mae import sdtv3_large_cls
+try:
+    from models.sdtv3_mae import sdtv3_large_cls
+except Exception:
+    sdtv3_large_cls = None
 
 # model selector
 model_sel_tr = {

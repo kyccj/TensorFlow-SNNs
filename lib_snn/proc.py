@@ -991,6 +991,27 @@ def spike_count_epoch_init(self):
 
     self.spike_count_total = 0
 
+    if conf.reg_spike_log_detail:
+        self.list_sc_rate = collections.OrderedDict()
+        self.list_sc_loss = collections.OrderedDict()
+        self.list_firing_rate = collections.OrderedDict()
+        self.list_firing_rate_std = collections.OrderedDict()
+        self.list_sc_rate_std = collections.OrderedDict()
+        self.list_dead_neuron_ratio = collections.OrderedDict()
+        self.list_gini = collections.OrderedDict()
+        self.list_top10_share = collections.OrderedDict()
+        self.list_entropy = collections.OrderedDict()
+        for neuron in self.model.layers_w_neuron:
+            self.list_sc_rate[neuron.name] = 0
+            self.list_sc_loss[neuron.name] = 0
+            self.list_firing_rate[neuron.name] = 0
+            self.list_firing_rate_std[neuron.name] = 0
+            self.list_sc_rate_std[neuron.name] = 0
+            self.list_dead_neuron_ratio[neuron.name] = 0
+            self.list_gini[neuron.name] = 0
+            self.list_top10_share[neuron.name] = 0
+            self.list_entropy[neuron.name] = 0
+
 def spike_count_batch_end(self):
     #tf.summary.scalar('best_acc_val', data=self.best, step=epoch)
     #logs['best_acc_val'] = self.best
@@ -1021,6 +1042,20 @@ def spike_count_batch_end(self):
             spike_count = tf.reduce_sum(sc.values)
             self.list_spike_count[name] += spike_count
             self.spike_count_total += spike_count
+
+    if conf.reg_spike_log_detail:
+        for neuron in self.model.layers_w_neuron:
+            if hasattr(neuron.act, 'sc_rate_snap'):
+                self.list_sc_rate[neuron.name] += neuron.act.sc_rate_snap
+                self.list_sc_loss[neuron.name] += neuron.act.sc_loss_snap
+                self.list_firing_rate[neuron.name] += neuron.act.firing_rate_snap
+                self.list_firing_rate_std[neuron.name] += neuron.act.firing_rate_std_snap
+                self.list_sc_rate_std[neuron.name] += neuron.act.sc_rate_std_snap
+                self.list_dead_neuron_ratio[neuron.name] += neuron.act.dead_neuron_ratio_snap
+                self.list_gini[neuron.name] += neuron.act.gini_snap
+                self.list_top10_share[neuron.name] += neuron.act.top10_share_snap
+                if hasattr(neuron.act, 'entropy_snap'):
+                    self.list_entropy[neuron.name] += neuron.act.entropy_snap
 
 
 def spike_count_batch_end_one_device(self):
@@ -1060,6 +1095,162 @@ def spike_count_epoch_end(self,epoch,logs,num_ds):
         #with self.writer.as_default():
         #    tf.summary.scalar('bset_s_count', data=self.spike_count_total_best, step=epoch)
         #    self.writer.flush()
+
+    # grow-until-interference lambda update
+    if conf.reg_spike_grow and 'loss' in logs.keys():
+        cur_lambda = float(lib_snn.model.adaptive_lambda.numpy())
+        task_loss = logs['loss']
+        # subtract reg contribution: sc_loss_snap stores RAW (pre-lambda) sc_loss,
+        # so the actual reg term in total loss is lambda * raw_sum
+        if conf.reg_spike_log_detail and hasattr(self, 'list_sc_loss'):
+            num_batches_g = num_ds / conf.batch_size
+            task_loss = task_loss - cur_lambda * float(sum(self.list_sc_loss.values())) / num_batches_g
+        if not hasattr(self, '_grow_loss_ema'):
+            # first epoch: initialize statistics, activate lambda at tiny init
+            self._grow_loss_ema = task_loss
+            self._grow_loss_var = 0.0
+            self._grow_loss_ema_min = task_loss
+            new_lambda = conf.reg_spike_grow_init
+        else:
+            sigma = self._grow_loss_var ** 0.5
+            # interference test vs BEST loss level seen so far (anchored reference,
+            # prevents EMA from drifting up together with a slow degradation)
+            violated = sigma > 0 and task_loss > self._grow_loss_ema_min + conf.reg_spike_grow_sigma_k * sigma
+            if violated:
+                new_lambda = cur_lambda * conf.reg_spike_grow_decay
+                # do NOT update statistics with a violation epoch (outlier)
+            else:
+                new_lambda = cur_lambda * conf.reg_spike_grow_rate
+                beta = 0.9
+                dev = task_loss - self._grow_loss_ema
+                self._grow_loss_ema = beta * self._grow_loss_ema + (1.0 - beta) * task_loss
+                self._grow_loss_var = beta * self._grow_loss_var + (1.0 - beta) * dev * dev
+                self._grow_loss_ema_min = min(self._grow_loss_ema_min, self._grow_loss_ema)
+            new_lambda = max(new_lambda, conf.reg_spike_grow_init)
+            new_lambda = min(new_lambda, 1e-3)  # sanity cap
+        lib_snn.model.adaptive_lambda.assign(new_lambda)
+        logs['adp_lambda'] = new_lambda
+        logs['task_loss_ema'] = self._grow_loss_ema
+        logs['task_loss_clean'] = task_loss
+
+    # spike-count feedback lambda update
+    if conf.reg_spike_sc_feedback:
+        cur_lambda = float(lib_snn.model.adaptive_lambda.numpy())
+        target = conf.reg_spike_sc_target
+        current = self.spike_count_total
+        if epoch < 20:
+            new_lambda = 0.0
+        elif cur_lambda == 0.0:
+            new_lambda = 1e-9
+        else:
+            ratio = current / target
+            new_lambda = cur_lambda * (ratio ** 0.5)
+            new_lambda = max(new_lambda, 1e-9)
+            new_lambda = min(new_lambda, 1e-5)
+        lib_snn.model.adaptive_lambda.assign(new_lambda)
+        logs['adp_lambda'] = new_lambda
+
+    # loss-ratio feedback lambda update
+    if conf.reg_spike_loss_ratio and conf.reg_spike_log_detail:
+        cur_lambda = float(lib_snn.model.adaptive_lambda.numpy())
+        num_batches_lr = num_ds / conf.batch_size
+        total_reg = sum(self.list_sc_loss.values()) / num_batches_lr
+        task_loss = logs.get('loss', 1.0) - total_reg
+        if task_loss < 1e-8:
+            task_loss = 1e-8
+        if epoch < 20:
+            new_lambda = 0.0
+        elif cur_lambda == 0.0:
+            new_lambda = 1e-9
+        else:
+            current_ratio = total_reg / task_loss
+            target_ratio = conf.reg_spike_loss_ratio_target
+            if current_ratio < 1e-12:
+                new_lambda = cur_lambda * 2.0
+            else:
+                new_lambda = cur_lambda * (target_ratio / current_ratio) ** 0.3
+            new_lambda = max(new_lambda, 1e-9)
+            new_lambda = min(new_lambda, 1e-5)
+        lib_snn.model.adaptive_lambda.assign(new_lambda)
+        logs['adp_lambda'] = new_lambda
+        logs['loss_ratio'] = total_reg / task_loss if task_loss > 1e-8 else 0.0
+
+    # LR-linked safety valve
+    if conf.reg_spike_lr_linked_safety and 'val_acc' in logs.keys():
+        if not hasattr(self, '_safety_best_acc'):
+            self._safety_best_acc = 0.0
+        if logs['val_acc'] > self._safety_best_acc:
+            self._safety_best_acc = logs['val_acc']
+        if logs['val_acc'] < self._safety_best_acc - 0.02:
+            lib_snn.model.lr_linked_safety_mult.assign(0.5)
+        else:
+            lib_snn.model.lr_linked_safety_mult.assign(1.0)
+        logs['safety_mult'] = float(lib_snn.model.lr_linked_safety_mult.numpy())
+
+    # adaptive lambda update
+    if conf.reg_spike_adaptive and 'best_val_acc' in logs.keys():
+        cur_lambda = float(lib_snn.model.adaptive_lambda.numpy())
+        if epoch < conf.reg_spike_adaptive_start_ep:
+            new_lambda = 0.0
+        else:
+            if cur_lambda == 0.0:
+                new_lambda = conf.reg_spike_adaptive_lambda_init
+                if not hasattr(self, '_adaptive_ref_acc'):
+                    self._adaptive_ref_acc = logs['best_val_acc']
+                if not hasattr(self, '_adaptive_acc_history'):
+                    self._adaptive_acc_history = []
+            else:
+                window = conf.reg_spike_adaptive_window
+                if window > 1 and hasattr(self, '_adaptive_acc_history'):
+                    hist = self._adaptive_acc_history
+                    if len(hist) >= window:
+                        ref_acc = sum(hist[-window:]) / window
+                    else:
+                        ref_acc = getattr(self, '_adaptive_ref_acc', logs['best_val_acc'])
+                else:
+                    ref_acc = getattr(self, '_adaptive_ref_acc', logs['best_val_acc'])
+
+                if logs['val_acc'] >= ref_acc - conf.reg_spike_adaptive_margin:
+                    new_lambda = cur_lambda * (1.0 + conf.reg_spike_adaptive_step_up)
+                else:
+                    new_lambda = cur_lambda * (1.0 - conf.reg_spike_adaptive_step_down)
+                lambda_min = conf.reg_spike_adaptive_lambda_min if conf.reg_spike_adaptive_lambda_min > 0 else conf.reg_spike_adaptive_lambda_init * 0.01
+                new_lambda = max(new_lambda, lambda_min)
+                new_lambda = min(new_lambda, conf.reg_spike_adaptive_lambda_max)
+                if window <= 1 and logs['val_acc'] >= ref_acc:
+                    self._adaptive_ref_acc = logs['val_acc']
+            if hasattr(self, '_adaptive_acc_history'):
+                self._adaptive_acc_history.append(logs['val_acc'])
+        lib_snn.model.adaptive_lambda.assign(new_lambda)
+        logs['adp_lambda'] = new_lambda
+
+    if conf.reg_spike_log_detail:
+        num_batches = num_ds / conf.batch_size
+        csv_path = os.path.join(conf.root_model_save, 'reg_detail.csv')
+        write_header = not os.path.exists(csv_path)
+        with open(csv_path, 'a') as f:
+            if write_header:
+                f.write('epoch,layer,spike_count,sc_rate_mean,sc_loss,firing_rate,entropy\n')
+            for name in self.list_spike_count:
+                sc = self.list_spike_count[name]
+                sr = self.list_sc_rate.get(name, 0) / num_batches
+                sl = self.list_sc_loss.get(name, 0) / num_batches
+                fr = self.list_firing_rate.get(name, 0) / num_batches
+                ent = self.list_entropy.get(name, 0) / num_batches
+                f.write(f'{epoch},{name},{sc:.4f},{sr:.6f},{sl:.6f},{fr:.6f},{ent:.6f}\n')
+
+        csv_path2 = os.path.join(conf.root_model_save, 'reg_neuron_detail.csv')
+        write_header2 = not os.path.exists(csv_path2)
+        with open(csv_path2, 'a') as f:
+            if write_header2:
+                f.write('epoch,layer,firing_rate_std,sc_rate_std,dead_neuron_ratio,gini,top10_share\n')
+            for name in self.list_spike_count:
+                frs = self.list_firing_rate_std.get(name, 0) / num_batches
+                srs = self.list_sc_rate_std.get(name, 0) / num_batches
+                dnr = self.list_dead_neuron_ratio.get(name, 0) / num_batches
+                gi = self.list_gini.get(name, 0) / num_batches
+                t10 = self.list_top10_share.get(name, 0) / num_batches
+                f.write(f'{epoch},{name},{frs:.6f},{srs:.6f},{dnr:.6f},{gi:.6f},{t10:.6f}\n')
 
 
 def gradient_epoch_end(self,epoch):
