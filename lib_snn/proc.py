@@ -1133,6 +1133,61 @@ def spike_count_epoch_end(self,epoch,logs,num_ds):
         logs['task_loss_ema'] = self._grow_loss_ema
         logs['task_loss_clean'] = task_loss
 
+    # spike-normalized lambda (auto-k).
+    #   epochs 0..meas_ep-1 : lambda = 0. this is also the window early-reg experiments
+    #                         showed must stay unregularized, so the measurement is free.
+    #   at meas_ep          : S_final is predicted from this epoch's spike count and
+    #                         lambda = K / S_final is fixed for the rest of training.
+    if conf.reg_spike_auto_k and 'loss' in logs.keys():
+        if epoch < conf.reg_spike_auto_k_meas_ep:
+            lib_snn.model.adaptive_lambda.assign(0.0)
+            logs['adp_lambda'] = 0.0
+        elif not hasattr(self, '_auto_k_lambda'):
+            s_meas = float(self.spike_count_total)
+            s_pred = s_meas * conf.reg_spike_auto_k_decay
+            self._auto_k_s_meas = s_meas
+            self._auto_k_s_pred = s_pred
+            self._auto_k_lambda = conf.reg_spike_auto_k_const / s_pred if s_pred > 0 else 0.0
+            lib_snn.model.adaptive_lambda.assign(self._auto_k_lambda)
+            print(f'\n[auto-k] ep{epoch}: S_meas={s_meas:,.0f} -> S_final_pred={s_pred:,.0f} '
+                  f'-> lambda={self._auto_k_lambda:.4e} (K={conf.reg_spike_auto_k_const:.3e})\n')
+            logs['adp_lambda'] = self._auto_k_lambda
+        else:
+            logs['adp_lambda'] = self._auto_k_lambda
+        logs['s_pred'] = getattr(self, '_auto_k_s_pred', 0.0)
+
+    # gradient-ratio: read out the epoch's grad-norm probe and (optionally) solve lambda.
+    # rho = ||grad(reg)||/||grad(task)|| is dimensionless, so the same target transfers
+    # across models/datasets whose optimal lambda differs by orders of magnitude.
+    if (conf.reg_spike_grad_ratio_measure or conf.reg_spike_grad_ratio) and 'loss' in logs.keys():
+        cnt = float(lib_snn.model.grad_norm_cnt.numpy())
+        if cnt > 0:
+            gn_task = float(lib_snn.model.grad_norm_task.numpy()) / cnt
+            gn_reg = float(lib_snn.model.grad_norm_reg.numpy()) / cnt
+            rho = gn_reg / gn_task if gn_task > 0 else 0.0
+            logs['g_task'] = gn_task
+            logs['g_reg'] = gn_reg
+            logs['rho'] = rho
+
+            if conf.reg_spike_grad_ratio:
+                cur_lambda = float(lib_snn.model.adaptive_lambda.numpy())
+                if cur_lambda <= 0.0 or rho <= 0.0:
+                    new_lambda = conf.reg_spike_grad_ratio_init
+                else:
+                    # ||grad(lambda*R)|| = lambda*||grad(R)||, so the target is solved
+                    # directly in one step rather than approached by a growth rate
+                    scale = conf.reg_spike_grad_ratio_target / rho
+                    step_max = conf.reg_spike_grad_ratio_max_step
+                    scale = min(max(scale, 1.0 / step_max), step_max)
+                    new_lambda = cur_lambda * scale
+                lib_snn.model.adaptive_lambda.assign(new_lambda)
+                logs['adp_lambda'] = new_lambda
+
+        # reset the accumulators for the next epoch
+        lib_snn.model.grad_norm_task.assign(0.0)
+        lib_snn.model.grad_norm_reg.assign(0.0)
+        lib_snn.model.grad_norm_cnt.assign(0.0)
+
     # spike-count feedback lambda update
     if conf.reg_spike_sc_feedback:
         cur_lambda = float(lib_snn.model.adaptive_lambda.numpy())

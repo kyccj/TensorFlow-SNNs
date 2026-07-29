@@ -968,7 +968,7 @@ class Neuron(tf.keras.layers.Layer):
                         progress = tf.clip_by_value(tf.cast(train_counter, tf.float32) / tf.cast(total_steps, tf.float32), 0.0, 1.0)
                         effective_lambda = conf.reg_spike_out_const * tf.pow(progress, conf.reg_spike_epoch_ramp_power)
                         sc_loss = sc_loss * effective_lambda
-                    elif conf.reg_spike_adaptive or conf.reg_spike_sc_feedback or conf.reg_spike_loss_ratio or conf.reg_spike_grow:
+                    elif conf.reg_spike_adaptive or conf.reg_spike_sc_feedback or conf.reg_spike_loss_ratio or conf.reg_spike_grow or conf.reg_spike_grad_ratio or conf.reg_spike_auto_k:
                         sc_loss = sc_loss * lib_snn.model.adaptive_lambda
                     else:
                         sc_loss = sc_loss*conf.reg_spike_out_const

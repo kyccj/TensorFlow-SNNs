@@ -52,6 +52,12 @@ train_counter = tf.Variable(0, trainable=False, dtype=tf.int64, name="train_coun
 # adaptive lambda for spike regularization
 adaptive_lambda = tf.Variable(0.0, trainable=False, dtype=tf.float32, name="adaptive_lambda")
 lr_linked_safety_mult = tf.Variable(1.0, trainable=False, dtype=tf.float32, name="lr_linked_safety_mult")
+
+# gradient-norm probe: running means of ||grad(task_loss)|| and ||grad(reg_loss)||
+# over the epoch. dimensionless ratio reg/task is what lambda is solved against.
+grad_norm_task = tf.Variable(0.0, trainable=False, dtype=tf.float32, name="grad_norm_task")
+grad_norm_reg = tf.Variable(0.0, trainable=False, dtype=tf.float32, name="grad_norm_reg")
+grad_norm_cnt = tf.Variable(0.0, trainable=False, dtype=tf.float32, name="grad_norm_cnt")
 #train_counter = 0
 
 
@@ -2052,9 +2058,14 @@ class Model(tf.keras.Model):
                 else:
                     #sample_weight = data_adapter.unpack_x_y_sample_weight(data)
                     # Run forward pass.
-                    with tf.GradientTape() as tape:
+                    # gradient-norm probe needs a second tape.gradient() over the same
+                    # forward pass, so the tape must survive the first call
+                    f_grad_probe = conf.reg_spike_grad_ratio_measure or conf.reg_spike_grad_ratio
+                    with tf.GradientTape(persistent=f_grad_probe) as tape:
                         y_pred = self(x, training=True)
                         loss = self.compute_loss(x, y, y_pred, sample_weight)
+                        if f_grad_probe:
+                            reg_loss_probe = tf.add_n(self.losses)
 
                         #if tf.keras.mixed_precision.global_policy().name == 'mixed_float16':
                         #    loss = tf.cast(loss, tf.float16)
@@ -2090,6 +2101,23 @@ class Model(tf.keras.Model):
                         # Keras 3: use tape.gradient directly
                         grads = tape.gradient(loss, self.trainable_variables)
                         grads_accum_and_vars = list(zip(grads, self.trainable_variables))
+
+                    if f_grad_probe:
+                        # grads_accum_and_vars holds grad(task + reg); the reg part is
+                        # obtained separately so grad(task) = total - reg. norms are
+                        # accumulated over the epoch and read out by the epoch-end callback.
+                        g_reg = tape.gradient(reg_loss_probe, self.trainable_variables)
+                        sq_reg = tf.constant(0.0)
+                        sq_task = tf.constant(0.0)
+                        for gr, (gt, _v) in zip(g_reg, grads_accum_and_vars):
+                            if gr is None or gt is None:
+                                continue
+                            sq_reg += tf.reduce_sum(tf.square(gr))
+                            sq_task += tf.reduce_sum(tf.square(gt - gr))
+                        grad_norm_reg.assign_add(tf.sqrt(sq_reg))
+                        grad_norm_task.assign_add(tf.sqrt(sq_task))
+                        grad_norm_cnt.assign_add(1.0)
+                        del tape
 
                 # for grad, var in grads_accum_and_vars:
                 #     print(f"Grad shape: {grad.shape}, Var shape: {var.shape,var.name}")

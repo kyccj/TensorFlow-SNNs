@@ -859,6 +859,23 @@ flags.DEFINE_float('reg_spike_grow_rate',1.2,'grow: multiplicative growth per ep
 flags.DEFINE_float('reg_spike_grow_decay',0.5,'grow: multiplicative decay on interference detection')
 flags.DEFINE_float('reg_spike_grow_sigma_k',2.0,'grow: sigma multiplier for interference test (loss > EMA + k*sigma)')
 
+# gradient-ratio control: lambda is solved so that ||grad(reg)||/||grad(task)|| hits a
+# dimensionless target, removing the model/dataset-dependent scale of lambda itself
+flags.DEFINE_bool('reg_spike_grad_ratio_measure',False,'measure only: log ||grad(reg)||/||grad(task)|| each epoch without changing lambda')
+flags.DEFINE_bool('reg_spike_grad_ratio',False,'gradient-ratio control: solve lambda each epoch so grad-norm ratio equals target')
+flags.DEFINE_float('reg_spike_grad_ratio_target',0.01,'gradient-ratio control: target ||grad(reg)||/||grad(task)||')
+flags.DEFINE_float('reg_spike_grad_ratio_init',1e-9,'gradient-ratio control: lambda used before the first measurement')
+flags.DEFINE_float('reg_spike_grad_ratio_max_step',2.0,'gradient-ratio control: max multiplicative change of lambda per epoch')
+
+# spike-normalized lambda: lambda is dimensional -- its effect scales with how many
+# spikes the network emits. dividing it out leaves K = lambda * S_final, which transfers
+# across architectures. S_final is predicted from an early-epoch measurement, since the
+# spike decay trajectory has nearly the same shape in every setting (ratio spread 1.10x).
+flags.DEFINE_bool('reg_spike_auto_k',False,'spike-normalized lambda: lambda = K / S_final_predicted, measured on the fly')
+flags.DEFINE_float('reg_spike_auto_k_const',6.75e-3,'auto-k: the transferable constant K = lambda * S_final')
+flags.DEFINE_integer('reg_spike_auto_k_meas_ep',5,'auto-k: epoch at which spike count is measured (reg is off before this)')
+flags.DEFINE_float('reg_spike_auto_k_decay',0.33,'auto-k: S_final / S_at_meas_ep, empirically ~0.33 across all settings')
+
 flags.DEFINE_bool('reg_spike_log_detail',False,'log per-layer spike regularization metrics')
 
 
