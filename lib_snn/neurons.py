@@ -941,9 +941,14 @@ class Neuron(tf.keras.layers.Layer):
 
                     if conf.reg_spike_out_encourage:
                         sc_loss = sc_loss + sc_loss_enc
+                    # sc_loss_snap holds the RAW (pre-lambda) reg value. loss-ratio control
+                    # needs it every step, so it is kept outside the log_detail block --
+                    # it is one scalar assign, unlike the sort/top_k metrics below.
+                    if conf.reg_spike_log_detail or conf.reg_spike_loss_ratio:
+                        self.sc_loss_snap.assign(sc_loss)
+
                     if conf.reg_spike_log_detail:
                         self.sc_rate_snap.assign(tf.reduce_mean(sc_rate))
-                        self.sc_loss_snap.assign(sc_loss)
                         self.firing_rate_snap.assign(tf.reduce_mean(spike))
 
                         # sc_rate_std (needs sc_rate, only available inside reg_spike_out)

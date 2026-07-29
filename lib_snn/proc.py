@@ -1043,6 +1043,12 @@ def spike_count_batch_end(self):
             self.list_spike_count[name] += spike_count
             self.spike_count_total += spike_count
 
+    # raw reg value: needed by loss-ratio control even when detail logging is off
+    if conf.reg_spike_loss_ratio and not conf.reg_spike_log_detail:
+        for neuron in self.model.layers_w_neuron:
+            if hasattr(neuron.act, 'sc_loss_snap'):
+                self.list_sc_loss[neuron.name] += neuron.act.sc_loss_snap
+
     if conf.reg_spike_log_detail:
         for neuron in self.model.layers_w_neuron:
             if hasattr(neuron.act, 'sc_rate_snap'):
@@ -1206,29 +1212,31 @@ def spike_count_epoch_end(self,epoch,logs,num_ds):
         logs['adp_lambda'] = new_lambda
 
     # loss-ratio feedback lambda update
-    if conf.reg_spike_loss_ratio and conf.reg_spike_log_detail:
+    # loss-ratio control: hold the regularization term at a fixed fraction rho of the
+    # task loss.  reg = lambda * R, so  lambda = rho * L_task / R  solves it exactly in
+    # one step -- no gain, no iteration.  Both L_task and R are measured in this run, so
+    # nothing has to be known in advance (no baseline, no target, no calibration sweep).
+    #
+    # R (list_sc_loss) is the RAW pre-lambda value, so the reg contribution actually
+    # present in logs['loss'] is cur_lambda * R -- that factor was missing before, which
+    # made task_loss come out ~ -R (the same bug grow v1 had).
+    if conf.reg_spike_loss_ratio and 'loss' in logs.keys():
         cur_lambda = float(lib_snn.model.adaptive_lambda.numpy())
         num_batches_lr = num_ds / conf.batch_size
-        total_reg = sum(self.list_sc_loss.values()) / num_batches_lr
-        task_loss = logs.get('loss', 1.0) - total_reg
-        if task_loss < 1e-8:
-            task_loss = 1e-8
-        if epoch < 20:
+        R = float(sum(self.list_sc_loss.values())) / num_batches_lr
+        reg_term = cur_lambda * R
+        task_loss = max(logs['loss'] - reg_term, 1e-8)
+
+        if epoch < conf.reg_spike_loss_ratio_start_ep or R <= 0.0:
             new_lambda = 0.0
-        elif cur_lambda == 0.0:
-            new_lambda = 1e-9
         else:
-            current_ratio = total_reg / task_loss
-            target_ratio = conf.reg_spike_loss_ratio_target
-            if current_ratio < 1e-12:
-                new_lambda = cur_lambda * 2.0
-            else:
-                new_lambda = cur_lambda * (target_ratio / current_ratio) ** 0.3
-            new_lambda = max(new_lambda, 1e-9)
-            new_lambda = min(new_lambda, 1e-5)
+            new_lambda = conf.reg_spike_loss_ratio_target * task_loss / R
+            new_lambda = min(max(new_lambda, 0.0), 1e-4)   # sanity bounds only
         lib_snn.model.adaptive_lambda.assign(new_lambda)
         logs['adp_lambda'] = new_lambda
-        logs['loss_ratio'] = total_reg / task_loss if task_loss > 1e-8 else 0.0
+        logs['reg_R'] = R
+        logs['task_loss_clean'] = task_loss
+        logs['loss_ratio'] = reg_term / task_loss
 
     # LR-linked safety valve
     if conf.reg_spike_lr_linked_safety and 'val_acc' in logs.keys():

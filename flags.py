@@ -848,7 +848,8 @@ flags.DEFINE_bool('reg_spike_sc_feedback',False,'spike-count feedback: adjust la
 flags.DEFINE_float('reg_spike_sc_target',40000,'spike-count feedback: target total spike count')
 
 flags.DEFINE_bool('reg_spike_loss_ratio',False,'loss-ratio feedback: adjust lambda to maintain reg_loss/task_loss ratio')
-flags.DEFINE_float('reg_spike_loss_ratio_target',0.005,'loss-ratio feedback: target ratio of reg_loss to task_loss')
+flags.DEFINE_float('reg_spike_loss_ratio_target',2.6e-4,'loss-ratio control: target reg_loss/task_loss. measured value at matched sparsity across 4 settings spans 1.5e-4..3.5e-4')
+flags.DEFINE_integer('reg_spike_loss_ratio_start_ep',0,'loss-ratio control: epoch to start (lambda=0 before)')
 
 flags.DEFINE_bool('reg_spike_epoch_ramp',False,'epoch-based lambda ramp: lambda = lmax * (epoch/total)^power, no LR dependency')
 flags.DEFINE_float('reg_spike_epoch_ramp_power',3.0,'epoch ramp: power exponent')
