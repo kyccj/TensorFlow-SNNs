@@ -29,7 +29,7 @@ SWEEP_DIR = os.path.join(PROJECT_ROOT, '_loss_ratio')
 PYTHON = '/home/kyccj/anaconda3/envs/venv_1/bin/python'
 CUDA_LD_PATH = '/home/kyccj/anaconda3/envs/venv_1/lib'
 
-RHO = 2.6e-4
+RHO = float(os.environ.get('LR_RHO', '5.8e-4'))
 START_EP = 0
 ALPHA = 7          # matches the June sweeps rho was fitted to
 
@@ -62,11 +62,27 @@ def make_config(gpu_id, exp_name, model, dataset, rho):
 # gpu -> (name, model, dataset, rho).  GPU 0 and 2 belong to other work; these are the
 # lanes the auto-k runs vacate.
 LANES = {
-    3: ('lr_vgg_c10',   'VGG16',    'CIFAR10',  RHO),
+    3: (os.environ.get('LR_NAME3', 'lr_vgg_c10'), 'VGG16', 'CIFAR10', RHO),
     4: ('lr_r19_c10',   'ResNet19', 'CIFAR10',  RHO),
     5: ('lr_vgg_c100',  'VGG16',    'CIFAR100', RHO),
     1: ('lr_r19_c100',  'ResNet19', 'CIFAR100', RHO),
+    # transfer test: the SAME rho that calibrated VGG-C10 (5.8e-4), applied to VGG-C100.
+    # its own calibrated value would be ~7.2e-4, so landing near 70% here means the
+    # constant carries across datasets; landing high means it does not.
+    0: ('lr_vgg_c100_rho58', 'VGG16', 'CIFAR100', RHO),
 }
+# architecture-transfer test: the rho calibrated on VGG-C10 (5.8e-4), applied to ResNet19.
+# auto-k failed exactly here (R19-C10 missed 70% by 15.7pp). VGG-C10 landed at 69.6% and
+# VGG-C100 at 66.3% with this rho, so 66-74% here means rho carries across architectures.
+LANES_R19 = {
+    0: ('lr_r19_c10_rho58',  'ResNet19', 'CIFAR10',  RHO),
+    3: ('lr_r19_c100_rho58', 'ResNet19', 'CIFAR100', RHO),
+    # VGG-C100 at rho=5.8e-4 lost 0.91%p, the only run outside its baseline spread
+    # (0.76%p). n=1, so a replicate decides whether that is real.
+    5: ('lr_vgg_c100_rho58_run2', 'VGG16', 'CIFAR100', RHO),
+}
+if os.environ.get('LR_R19'):
+    LANES = LANES_R19
 
 
 def run_one(gpu, name, model, dataset, rho):

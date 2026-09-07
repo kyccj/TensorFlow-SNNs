@@ -266,9 +266,13 @@ class Neuron(tf.keras.layers.Layer):
         self.f_fire = tf.Variable(initial_value=tf.constant(False,dtype=tf.bool,shape=self.dim), trainable=False, name="f_fire")
         # shape=self.dim, dtype=tf.bool, trainable=False, name="f_fire")
 
+        # sc_loss_snap is also read by loss-ratio control, which must work with detail
+        # logging off -- create it whenever either path needs it.
+        if conf.reg_spike_log_detail or conf.reg_spike_loss_ratio:
+            self.sc_loss_snap = tf.Variable(0.0, trainable=False, name="sc_loss_snap")
+
         if conf.reg_spike_log_detail:
             self.sc_rate_snap = tf.Variable(0.0, trainable=False, name="sc_rate_snap")
-            self.sc_loss_snap = tf.Variable(0.0, trainable=False, name="sc_loss_snap")
             self.firing_rate_snap = tf.Variable(0.0, trainable=False, name="firing_rate_snap")
             self.firing_rate_std_snap = tf.Variable(0.0, trainable=False, name="firing_rate_std_snap")
             self.sc_rate_std_snap = tf.Variable(0.0, trainable=False, name="sc_rate_std_snap")
@@ -778,9 +782,14 @@ class Neuron(tf.keras.layers.Layer):
                 self.add_loss(conf.im_k*im)
         #if True:
         #if False:
-        if conf.reg_spike_out:
+        # final_step: 규제를 매 t 가 아니라 t=T 에서 한 번만 건다. 그러면 sc_rate 가
+        # 최종 spike_count 로 한 번만 계산되어, t=1 에서 max=1 이라 1-maxnorm 이
+        # 0/1 이분법으로 무너지던 문제가 없어진다.
+        if conf.reg_spike_out and not (conf.reg_spike_final_step and t != conf.time_step):
 
             assert not(conf.reg_spike_out_norm and conf.reg_spike_out_norm_sq)
+            assert not(conf.reg_spike_final_step and conf.reg_spike_accum_loss), \
+                'final_step 과 accum_loss 는 같은 자리를 건드린다 — 하나만 켜라'
 
             #if self.loc != 'IN':
             if self.loc == 'HID':
@@ -804,9 +813,52 @@ class Neuron(tf.keras.layers.Layer):
 
 
                     def softmax_over_non_batch(x):
+                        # Activations are [b, H, W, C] -- conf.data_format is 'channels_last'
+                        # (flags.py:405). Which axes we group over decides everything: softmax
+                        # sums to 1 over its group, so the weights come out at scale 1/(group
+                        # size) and 1-softmax can only differentiate when that is O(1).
                         x_shape = tf.shape(x)
                         b=x_shape[0]
+                        grp = conf.reg_spike_sm_group
+                        if len(x.shape) == 4 and grp != 'none' and conf.reg_spike_sm_group_flat:
+                            # CONTROL: same per-layer mean as the grouping, zero spread.
+                            # A grouped softmax makes mean(sc_rate) = 1 - 1/group, and group
+                            # size varies with depth (e.g. 'row': 1-1/32 at conv1 but 1-1/2 at
+                            # conv5, i.e. HALF the effective lambda on deep layers). That is a
+                            # depth-dependent lambda profile, not a WTA effect. This branch
+                            # keeps the profile and removes the differentiation, so the two can
+                            # be told apart -- same role reg_spike_out_sc_one played globally.
+                            if grp == 'channel':      g = tf.cast(x_shape[3], x.dtype)
+                            elif grp == 'within_channel': g = tf.cast(x_shape[1]*x_shape[2], x.dtype)
+                            else:                     g = tf.cast(x_shape[1], x.dtype)   # 'row'
+                            return tf.fill(x_shape, tf.cast(1.0, x.dtype) / g)
+                        if len(x.shape) == 4 and grp != 'none':
+                            if grp == 'channel':
+                                # compete BETWEEN channels: pool space, softmax over C
+                                v = tf.reduce_sum(x, axis=[1,2])            # [b, C]
+                                y = tf.nn.softmax(v, axis=-1)
+                                return tf.broadcast_to(y[:, tf.newaxis, tf.newaxis, :], x_shape)
+                            if grp == 'within_channel':
+                                # compete WITHIN each channel: softmax over the H*W positions,
+                                # independently per channel. Group size H*W (1,024 for conv1)
+                                # instead of H*W*C, and -- the part that matters -- only a
+                                # handful of positions tie at the max inside one channel, so
+                                # the temperature alpha actually bites here (globally ~351 tie
+                                # at spike_count=T and alpha saturates).
+                                c = x_shape[3]
+                                v = tf.reshape(x, [b, -1, c])               # [b, H*W, C]
+                                y = tf.nn.softmax(v, axis=1)
+                                return tf.reshape(y, x_shape)
+                            if grp == 'row':
+                                # legacy behaviour of reg_spike_channel_wise: under
+                                # channels_last, axis=[2,3] pools W and C, so this competed
+                                # among the H image rows -- NOT among channels. Kept so the
+                                # 07/22 runs stay reproducible.
+                                v = tf.reduce_sum(x, axis=[2,3])            # [b, H]
+                                y = tf.nn.softmax(v, axis=-1)
+                                return tf.broadcast_to(y[:, :, tf.newaxis, tf.newaxis], x_shape)
                         if conf.reg_spike_channel_wise and len(x.shape) == 4:
+                            # legacy flag == 'row' (see above)
                             x_channel = tf.reduce_sum(x, axis=[2,3])
                             y_channel = tf.nn.softmax(x_channel, axis=-1)
                             y = y_channel[:, :, tf.newaxis, tf.newaxis]
@@ -863,11 +915,114 @@ class Neuron(tf.keras.layers.Layer):
                             ent_weight = -(1.0 + tf.math.log(p + 1e-8))
                             ent_weight = ent_weight / (tf.reduce_mean(ent_weight, axis=1, keepdims=True) + 1e-8)
                             sc_rate = tf.reshape(ent_weight, tf.shape(spike))
-                        elif conf.reg_spike_out_sc_maxnorm:
-                            # max-normalization: sc_norm in [0,1], winner=1, loser=0
+                        elif conf.reg_spike_out_pnorm > 0.0:
+                            # p-norm normalizer: one knob between the two existing methods.
+                            #   p -> 1    : divide by the SUM  == 1-softmax regime (weights ~ 1, uniform)
+                            #   p -> inf  : divide by the MAX  == maxnorm exactly (winner 0, silent 1)
+                            # The two methods differ only in this denominator, so p interpolates
+                            # them continuously. Computed as max*(sum((sc/max)^p))^(1/p) so sc^p
+                            # never overflows for large p.
+                            pw = conf.reg_spike_out_pnorm
+                            sc_p = tf.stop_gradient(self.spike_count)
+                            sc_mx = tf.reduce_max(sc_p, axis=reduce_axis, keepdims=True)
+                            sc_u = tf.math.divide_no_nan(sc_p, sc_mx)
+                            nrm = sc_mx * tf.pow(
+                                tf.reduce_sum(tf.pow(sc_u, pw), axis=reduce_axis, keepdims=True) + 1e-12,
+                                1.0 / pw)
+                            sc_rate = 1.0 - tf.math.divide_no_nan(sc_p, nrm)
+                            if conf.reg_spike_out_pnorm_mean1:
+                                # keep mean(sc_rate)=1 so a p sweep is not a disguised lambda sweep
+                                sc_rate = tf.math.divide_no_nan(
+                                    sc_rate,
+                                    tf.reduce_mean(sc_rate, axis=reduce_axis, keepdims=True))
+                        elif conf.reg_spike_out_sc_maxnorm_plain:
+                            # 'maxnorm' (no 1- inversion): winner gets the full penalty,
+                            # silent gets 0. Opposite direction to '1-maxnorm' below, and
+                            # silent neurons get sc_rate=0 so the wta_rev backward gives
+                            # them nothing.
                             sc_max = tf.reduce_max(self.spike_count, axis=reduce_axis, keepdims=True)
-                            sc_norm = tf.math.divide_no_nan(self.spike_count, sc_max)
-                            sc_rate = 1.0 - sc_norm
+                            sc_rate = tf.math.divide_no_nan(self.spike_count, sc_max)
+                        elif conf.reg_spike_out_sc_maxnorm:
+                            # '1-maxnorm': sc_norm in [0,1], winner -> 0 (protected), silent -> 1.
+                            # reg_spike_maxnorm_group decides WHERE the max comes from:
+                            #   'none'           layer-wide max. A weak channel whose own best
+                            #                    neuron fires 2 of T=4 still gets sc_rate 0.5,
+                            #                    so weak channels get erased entirely.
+                            #   'within_channel' max per channel -> every channel's top neuron
+                            #                    gets 0, so no channel can be wiped out.
+                            #   'channel'        pool space, then max over channels.
+                            mg = conf.reg_spike_maxnorm_group
+                            scp = self.spike_count
+                            if conf.reg_spike_vmem_gain > 0.0:
+                                # spike_count is an integer 0..T, so with T=4 every neuron
+                                # that never fires gets sc_rate exactly 1.0 -- and that is
+                                # 78-97% of the layer (measured). The wta_rev backward then
+                                # hands all of them the SAME gradient, which makes the
+                                # weighting effectively uniform. Add the charge the neuron
+                                # is still holding, as a fraction of threshold, so that
+                                # 'almost fired' and 'far below' separate. vmem here is the
+                                # post-fire potential of this timestep, so a neuron that
+                                # just fired is low -- its spike_count already carries it.
+                                vth_t = self.vth.read(t - 1)
+                                readiness = tf.clip_by_value(
+                                    tf.math.divide_no_nan(vmem, vth_t), 0.0, 1.0)
+                                readiness = tf.stop_gradient(tf.cast(readiness, scp.dtype))
+                                g = tf.cast(conf.reg_spike_vmem_gain, scp.dtype)
+                                if conf.reg_spike_vmem_silent_only:
+                                    # Only split the neurons that never fired. Adding
+                                    # readiness to a firing neuron too (the plain path) is
+                                    # wrong twice over: vmem after a spike is the reset
+                                    # REMAINDER, not readiness, and it inflates max above T
+                                    # so everyone else's sc/max gets squashed. Worse, at
+                                    # gain>1 a silent neuron at 0.9*vth outscores a neuron
+                                    # that actually fired once (1.8 vs 1.2). Here the firing
+                                    # neurons keep their integer count and the silent ones
+                                    # spread over [0, gain) below them, so the ranking by
+                                    # activity is never inverted.
+                                    scp = tf.where(scp > 0, scp, g * readiness)
+                                else:
+                                    scp = scp + g * readiness
+                            if mg == 'within_channel' and len(scp.shape) == 4:
+                                sc_max = tf.reduce_max(scp, axis=[1, 2], keepdims=True)
+                                sc_norm = tf.math.divide_no_nan(scp, sc_max)
+                            elif mg == 'channel' and len(scp.shape) == 4:
+                                ch = tf.reduce_sum(scp, axis=[1, 2], keepdims=True)   # [b,1,1,C]
+                                ch_max = tf.reduce_max(ch, axis=3, keepdims=True)
+                                sc_norm = tf.broadcast_to(tf.math.divide_no_nan(ch, ch_max),
+                                                          tf.shape(scp))
+                            else:
+                                sc_max = tf.reduce_max(scp, axis=reduce_axis, keepdims=True)
+                                sc_norm = tf.math.divide_no_nan(scp, sc_max)
+                            # beta = how hard the weighting leans, with 1-maxnorm as the
+                            # anchor. beta=1 is EXACTLY the old line (1 - sc_norm).
+                            #   beta > 1  push the quiet neurons even harder than 1-maxnorm
+                            #             (the top firer's weight goes negative = encouraged)
+                            #   beta = 0  uniform, every neuron weighted 1
+                            #   beta < 0  lean the other way (penalise the firers, maxnorm's
+                            #             direction) but a silent neuron still gets exactly 1,
+                            #             never 0 -- so it cannot drop out of the regulariser
+                            #             and die the way plain maxnorm does at large lambda.
+                            beta = tf.cast(conf.reg_spike_shape_beta, sc_norm.dtype)
+                            sc_rate = 1.0 - beta * sc_norm
+                            if conf.reg_spike_shape_mean1:
+                                # hold mean(sc_rate)=1 so a beta sweep is not a disguised
+                                # lambda sweep. Off by default so beta=1 reproduces exactly.
+                                sc_rate = tf.math.divide_no_nan(
+                                    sc_rate,
+                                    tf.reduce_mean(sc_rate, axis=reduce_axis, keepdims=True))
+                        elif conf.reg_spike_out_sc_one:
+                            # constant 1: the hypothesis that 1-softmax (measured mean 0.9999,
+                            # spread ~0) is just this. Keeps the wta_rev backward.
+                            sc_rate = tf.ones_like(sc_norm)
+                        elif conf.reg_spike_out_sm_plain:
+                            # plain softmax weighting (no 1- inversion): winner gets MORE
+                            # penalty. Takes priority over wta_rev so the wta_rev backward
+                            # (l2_norm_wta_rev) can be kept while only the weighting flips --
+                            # that isolates the weighting as the single difference.
+                            # NOTE: mean(sc_rate) = 1/N (softmax sums to 1), ~65536x smaller
+                            # than the 1-softmax branch (~0.9996), so at equal lambda the
+                            # effective pressure is ~N times weaker.
+                            sc_rate = sc_norm
                         elif conf.reg_spike_out_wta_rev or conf.reg_spike_out_sc_wta:
                             sc_rate = 1.0 - sc_norm
                         else:
@@ -903,10 +1058,19 @@ class Neuron(tf.keras.layers.Layer):
                     sc_rate = sc_rate*conf.reg_spike_rate_alpha
 
                     #
-                    if conf.reg_spike_out_inv_s:
-                        sc_loss = 1.0-conf.reg_spike_out_inv_s_const*spike
+                    # 벌점을 받는 양. final_step 이면 한 시간 단계의 spike 가 아니라
+                    # T 동안의 합이다. self.spike_count 를 쓰면 안 된다 -- tf.Variable 이라
+                    # assign 으로 갱신되어 그래디언트가 끊긴다. self.out 은 TensorArray 라
+                    # write/read 가 미분 가능하다.
+                    if conf.reg_spike_final_step:
+                        spike_reg = tf.add_n([self.out.read(_i) for _i in range(conf.time_step)])
                     else:
-                        sc_loss = spike*sc_rate
+                        spike_reg = spike
+
+                    if conf.reg_spike_out_inv_s:
+                        sc_loss = 1.0-conf.reg_spike_out_inv_s_const*spike_reg
+                    else:
+                        sc_loss = spike_reg*sc_rate
 
                     if conf.reg_spike_accum_loss:
                         if t == 1:
@@ -918,7 +1082,7 @@ class Neuron(tf.keras.layers.Layer):
 
                     # encourage term: penalize winners for NOT firing
                     if conf.reg_spike_out_encourage:
-                        sc_loss_enc = (1.0 - spike) * (1.0 - sc_rate)
+                        sc_loss_enc = (1.0 - spike_reg) * (1.0 - sc_rate)
 
                     if conf.reg_spike_out_wta_rev:
                         # revised WTA: L2 norm forward, modified gradient for non-firing neurons
@@ -941,22 +1105,52 @@ class Neuron(tf.keras.layers.Layer):
 
                     if conf.reg_spike_out_encourage:
                         sc_loss = sc_loss + sc_loss_enc
-                    # sc_loss_snap holds the RAW (pre-lambda) reg value. loss-ratio control
-                    # needs it every step, so it is kept outside the log_detail block --
-                    # it is one scalar assign, unlike the sort/top_k metrics below.
+                    # sc_loss_snap holds the RAW (pre-lambda) reg value that proc.py reads
+                    # once per batch. It must equal what actually reaches the loss, or the
+                    # loss-ratio controller solves for lambda against the wrong quantity.
+                    #
+                    # With reg_spike_accum_loss off (the default), add_loss below fires on
+                    # EVERY time step, so the loss receives sum_t ||x_t|| -- T terms. A plain
+                    # assign here would leave only the last step's term, under-reporting R by
+                    # roughly a factor of T and making the effective ratio T*rho instead of
+                    # rho. That is why rho did not survive a change in T. Accumulate instead.
+                    #
+                    # With accum_loss on, add_loss fires only at t==T and sc_loss is already
+                    # the norm of the summed tensor, so a plain assign is correct there.
+                    # final_step 은 이 블록 자체가 t=T 에만 들어오므로 add_loss 도 한 번뿐이다.
+                    # assign_add 로 두면 배치를 넘어 계속 쌓인다 (t==1 조건이 영영 참이 안 됨).
                     if conf.reg_spike_log_detail or conf.reg_spike_loss_ratio:
-                        self.sc_loss_snap.assign(sc_loss)
+                        if (conf.reg_spike_accum_loss or conf.reg_spike_final_step
+                                or conf.reg_spike_R_per_step or t == 1):
+                            self.sc_loss_snap.assign(sc_loss)
+                        else:
+                            self.sc_loss_snap.assign_add(sc_loss)
 
                     if conf.reg_spike_log_detail:
                         self.sc_rate_snap.assign(tf.reduce_mean(sc_rate))
-                        self.firing_rate_snap.assign(tf.reduce_mean(spike))
+                        # spike_reg 는 final_step 이면 T 스텝의 합이라 T 로 나눠야 기존 값과
+                        # 같은 눈금(한 스텝당 발화율)이 된다.
+                        _fr = tf.reduce_mean(spike_reg)
+                        if conf.reg_spike_final_step:
+                            _fr = _fr / tf.cast(conf.time_step, _fr.dtype)
+                        self.firing_rate_snap.assign(_fr)
 
                         # sc_rate_std (needs sc_rate, only available inside reg_spike_out)
                         b = tf.shape(spike)[0]
                         sc_rate_flat = tf.reshape(sc_rate, [b, -1])
                         self.sc_rate_std_snap.assign(tf.reduce_mean(tf.math.reduce_std(sc_rate_flat, axis=1)))
 
-                    if conf.reg_spike_lr_linked:
+                    if conf.reg_spike_ramp_start_ep >= 0:
+                        # fixed linear ramp, no feedback: lambda 0 -> out_const between
+                        # ramp_start_ep and ramp_end_ep. Used for the brake-causality
+                        # intervention (early ramp vs late ramp at matched final lambda).
+                        train_counter = lib_snn.model.train_counter
+                        s0 = conf.reg_spike_ramp_start_ep * 500
+                        s1 = conf.reg_spike_ramp_end_ep * 500
+                        prog = tf.cast(train_counter - s0, tf.float32) / tf.cast(max(s1 - s0, 1), tf.float32)
+                        prog = tf.clip_by_value(prog, 0.0, 1.0)
+                        sc_loss = sc_loss * (conf.reg_spike_out_const * prog)
+                    elif conf.reg_spike_lr_linked:
                         train_counter = lib_snn.model.train_counter
                         start_steps = conf.reg_spike_lr_linked_start_ep * 500
                         total_steps = conf.train_epoch * 500
@@ -973,7 +1167,7 @@ class Neuron(tf.keras.layers.Layer):
                         progress = tf.clip_by_value(tf.cast(train_counter, tf.float32) / tf.cast(total_steps, tf.float32), 0.0, 1.0)
                         effective_lambda = conf.reg_spike_out_const * tf.pow(progress, conf.reg_spike_epoch_ramp_power)
                         sc_loss = sc_loss * effective_lambda
-                    elif conf.reg_spike_adaptive or conf.reg_spike_sc_feedback or conf.reg_spike_loss_ratio or conf.reg_spike_grow or conf.reg_spike_grad_ratio or conf.reg_spike_auto_k:
+                    elif conf.reg_spike_adaptive or conf.reg_spike_sc_feedback or conf.reg_spike_loss_ratio or conf.reg_spike_grow or conf.reg_spike_grad_ratio or conf.reg_spike_auto_k or conf.reg_spike_starget:
                         sc_loss = sc_loss * lib_snn.model.adaptive_lambda
                     else:
                         sc_loss = sc_loss*conf.reg_spike_out_const
@@ -1004,6 +1198,23 @@ class Neuron(tf.keras.layers.Layer):
                         # layer-wise loss
                         max_depth = 16
                         sc_loss_layer_wise_rate = 1 - self.depth/max_depth
+                    elif conf.reg_spike_layer_cost == 'synops':
+                        # A spike is not equally expensive everywhere: it costs whatever
+                        # multiply-accumulates it drives in the next layer (9*C_next for a
+                        # 3x3 conv). On VGG16-CIFAR10 n_conv1 is 8x cheaper than n_conv4 yet
+                        # emits 26.6% of all spikes, so the flat default spends a quarter of
+                        # its pressure on the cheapest layer. These are architecture
+                        # constants, not tuned values, normalised so sum(c*R) == sum(R) at
+                        # the 1-maxnorm operating point (measured, mxg-mx_wc_5e-7 ep309) so
+                        # lambda keeps meaning the same thing.
+                        sc_loss_layer_wise_rate = {
+                            'n_conv1': 0.3307, 'n_conv1_1': 0.6614,
+                            'n_conv2': 0.6614, 'n_conv2_1': 1.3228,
+                            'n_conv3': 1.3228, 'n_conv3_1': 1.3228, 'n_conv3_2': 2.6455,
+                            'n_conv4': 2.6455, 'n_conv4_1': 2.6455, 'n_conv4_2': 2.6455,
+                            'n_conv5': 2.6455, 'n_conv5_1': 2.6455, 'n_conv5_2': 0.2939,
+                            'n_fc1': 0.2939, 'n_fc2': 0.0057,
+                        }.get(self.name, 1.0)
                     else:
                         sc_loss_layer_wise_rate = 1.0
 

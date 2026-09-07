@@ -824,9 +824,15 @@ flags.DEFINE_bool('reg_spike_out_encourage',False,'regularization - encourage wi
 flags.DEFINE_bool('reg_spike_out_entropy',False,'regularization - entropy-based WTA: sc_rate from entropy gradient -(1+log(p))')
 flags.DEFINE_bool('reg_spike_out_rev_softmax',False,'regularization - reverse softmax WTA: softmax(-spike_count/T) to suppress losers, protect winners')
 flags.DEFINE_float('reg_spike_out_rev_softmax_T',1.0,'reverse softmax temperature: lower = sharper WTA')
+flags.DEFINE_float('reg_spike_out_pnorm',0.0,'p-norm normalizer for sc_rate = 1 - sc/||sc||_p. 0 = off. p->1 reproduces the 1-softmax regime (uniform weights), p->inf reproduces maxnorm exactly. Single knob between the two.')
+flags.DEFINE_bool('reg_spike_out_pnorm_mean1',False,'renormalize p-norm sc_rate to mean 1 so a p sweep does not double as a lambda sweep')
 
-flags.DEFINE_bool('reg_spike_channel_wise',False,'channel-wise WTA: softmax over channels (C) instead of all neurons (C*H*W)')
+flags.DEFINE_bool('reg_spike_channel_wise',False,'LEGACY/MISNAMED. Under data_format=channels_last the tensor is [b,H,W,C] and this path reduces over axis=[2,3] (=W,C), so it competes among the H image ROWS, not among channels. The 07/22 runs used this. Prefer reg_spike_sm_group below.')
+flags.DEFINE_bool('reg_spike_sm_group_flat',False,'control for reg_spike_sm_group: emit the uniform value 1/group instead of the softmax, so sc_rate keeps the same per-layer mean (1-1/group) with zero spread. Separates the depth-dependent lambda profile a grouping induces from its actual differentiation.')
+flags.DEFINE_enum('reg_spike_sm_group','none',['none','channel','within_channel','row'],"which group the softmax normalizes over, for [b,H,W,C] activations. 'none' = all C*H*W neurons (group ~65k, weights O(1/N), 1-softmax degenerates to uniform). 'channel' = pool space, compete between C channels. 'within_channel' = compete among the H*W positions inside each channel, independently per channel. 'row' = the legacy reg_spike_channel_wise behaviour (competes among H rows).")
+flags.DEFINE_integer('run_seed',-1,"seed for tf.keras.utils.set_random_seed (python/numpy/tf). -1 (default) leaves the RNGs untouched, which is how every result before 2026-09-03 was produced -- keep it there when adding points to an existing curve. Set a DIFFERENT value per replicate (1,2,3,...), never the same one, or every 'repeat' returns the identical run. Written to the log so a reported number can be traced back to its seed; needed both for release and to find where the run-to-run spread comes from (vmem sd 0.217 vs 1-softmax 0.081 at the same setting, a 2.7x gap with no explanation yet).")
 flags.DEFINE_bool('reg_spike_accum_loss',False,'accumulate sc_loss across time steps, apply L2 norm once at last time step (norm of sum instead of sum of norms)')
+flags.DEFINE_bool('reg_spike_final_step',False,"run the whole spike regulariser ONCE, at t=T, on the accumulated spike count instead of once per time step. The default path recomputes sc_rate at every t from the RUNNING spike_count, so at t=1 max(spike_count)=1 and 1-maxnorm collapses to a 0/1 split -- a quarter of the time steps carry no weighting at all, and the T terms that reach the loss each use a different scale. Here sc_rate is computed once from the final count (silent neurons still split by reg_spike_vmem_gain / silent_only), and the penalised quantity is sum_t spike_t, built from the differentiable spike tensors in self.out -- NOT self.spike_count, which is a tf.Variable and carries no gradient. Also cuts the regulariser from T calls per step to 1. Alternative to reg_spike_accum_loss (which keeps the per-step sc_rate and only moves where the norm is taken); do not set both.")
 
 flags.DEFINE_bool('reg_spike_adaptive',False,'adaptive lambda: start reg after start_ep, adjust based on accuracy feedback')
 flags.DEFINE_integer('reg_spike_adaptive_start_ep',200,'adaptive lambda: epoch to start applying spike reg')
@@ -850,6 +856,55 @@ flags.DEFINE_float('reg_spike_sc_target',40000,'spike-count feedback: target tot
 flags.DEFINE_bool('reg_spike_loss_ratio',False,'loss-ratio feedback: adjust lambda to maintain reg_loss/task_loss ratio')
 flags.DEFINE_float('reg_spike_loss_ratio_target',2.6e-4,'loss-ratio control: target reg_loss/task_loss. measured value at matched sparsity across 4 settings spans 1.5e-4..3.5e-4')
 flags.DEFINE_integer('reg_spike_loss_ratio_start_ep',0,'loss-ratio control: epoch to start (lambda=0 before)')
+flags.DEFINE_bool('reg_spike_R_per_step',False,'loss-ratio control: report R as one time step instead of the sum over T. This under-reports what the loss actually receives by ~T and is wrong on its face, but it is the accounting every result before 2026-08-07 was measured under, so it exists to keep new points on that curve. Leave False for anything new.')
+# early-phase speed-limit brake. From the 26-08-12 retrospective over 189 completed runs:
+# cutting train-mode spikes below 0.19x of their epoch-1 level within the first 30 epochs
+# predicted accuracy damage with LOO precision 0.94 and a threshold stable across every
+# setting family (the one trajectory signal that transferred). The rho=3e-3 death
+# (V16-C100, spikes->0 by ep15) and the only standard-rho failure (V16-C100 at 5.8e-4,
+# S30/S1=0.159) were both violations; every passing run sat at 0.28+. The brake enforces
+# that envelope: while S(e)/S(1) is below the floor inside the window, lambda decays
+# instead of following the loss-ratio formula. The growth cap bounds the R->0 -> lambda->inf
+# positive feedback at all epochs.
+flags.DEFINE_bool('reg_spike_out_sm_plain',False,'plain softmax weighting: sc_rate = softmax(spike_count/alpha) with NO 1- inversion, so high-firing neurons get more penalty. Overrides the wta_rev/sc_wta weighting while keeping the wta_rev backward, isolating the weighting as the only difference. mean(sc_rate)=1/N, so equal lambda means ~N-times weaker effective pressure than 1-softmax.')
+flags.DEFINE_bool('reg_spike_out_sc_one',False,'constant coefficient: sc_rate = 1 exactly, keeping the wta_rev backward. 1-softmax measures 0.9999 with ~0 spread, so this should reproduce its results identically; if it does, softmax is vestigial and the method is "uniform-weight L2 with gradient to silent neurons".')
+flags.DEFINE_enum('reg_spike_maxnorm_group','none',['none','within_channel','channel'],"which group 1-maxnorm takes its max over, for [b,H,W,C] activations. 'none' = whole layer (max is the layer-wide max, so a weak channel's own best neuron still gets a large penalty). 'within_channel' = max per channel over H*W, so EVERY channel's top neuron gets sc_rate=0 and no channel can be wiped out. 'channel' = pool space then max over C.")
+flags.DEFINE_bool('reg_spike_out_sc_maxnorm_plain',False,"maxnorm WITHOUT the 1- inversion: sc_rate = sc/max (winner gets the FULL penalty, silent gets 0). Naming: reg_spike_out_sc_maxnorm is '1-maxnorm', this one is 'maxnorm'. Note silent neurons get sc_rate=0 so the wta_rev backward delivers them nothing, and mean(sc_rate) drops to ~mean(sc)/max, so lambda must be raised to match.")
+flags.DEFINE_enum('reg_spike_layer_cost','none',['none','synops'],"per-layer weight on the spike penalty. 'none' (default) weights every layer 1, i.e. a spike is treated as equally bad wherever it happens -- an unexamined default, not a measured fact. 'synops' weights each layer by the multiply-accumulates one of its spikes drives in the next layer (9*C_next for a 3x3 conv). On VGG16-CIFAR10 that is 8x cheaper in n_conv1 (9*64) than in n_conv4 (9*512), yet n_conv1 emits 26.6% of all spikes -- so the default spends a quarter of its pressure on the cheapest layer. Weights are normalised so sum(c*R) equals sum(R) at the 1-maxnorm operating point, keeping lambda comparable. VGG16-CIFAR10 only; unknown layer names fall back to 1.0. NOTE this optimises SynOps, not raw spike count, so raw s_count may get WORSE -- judge it on the axis you mean to claim.")
+flags.DEFINE_float('reg_spike_shape_beta',1.0,"how hard the 1-maxnorm weighting leans: sc_rate = 1 - beta*sc/max. beta=1 is exactly the current 1-maxnorm and is the default, so nothing changes unless it is set. beta=0 is uniform (every neuron weighted 1). beta<0 leans the other way -- the firers get MORE penalty, maxnorm's direction -- but a silent neuron still gets exactly 1 rather than 0, so it keeps receiving gradient and cannot drop out of the regulariser the way plain maxnorm does (all 17 hidden layers went to 0% firing at lambda=1e-5). beta>1 pushes the quiet neurons harder than 1-maxnorm does and makes the top firer's weight negative, i.e. encouraged. mean(sc_rate) = 1 - beta*mean(sc/max) drifts about 6% across beta 0..1.5; use reg_spike_shape_mean1 to pin it.")
+flags.DEFINE_bool('reg_spike_shape_mean1',False,'renormalise sc_rate to mean 1 after applying reg_spike_shape_beta, so a beta sweep is not a disguised lambda sweep. Off by default so beta=1 reproduces the existing 1-maxnorm runs bit for bit.')
+flags.DEFINE_bool('reg_spike_vmem_silent_only',False,"apply the vmem readiness ONLY to neurons that never fired, instead of adding it to every neuron. The plain path adds readiness to firing neurons too, where vmem is the post-spike remainder rather than a readiness, and where it pushes sc_soft above T so max inflates and every other neuron's sc/max is squashed; at gain>1 it also lets a silent neuron at 0.9*vth outscore a neuron that actually fired once (1.8 vs 1.2). With this on, firing neurons keep their integer spike_count and silent ones spread over [0, gain) strictly below them, so activity ranking is preserved. Use gain<=1 with this.")
+flags.DEFINE_float('reg_spike_vmem_gain',0.0,"threshold-proximity weighting for 1-maxnorm: sc_soft = spike_count + gain*clip(vmem/vth,0,1), used in place of spike_count when building sc_rate. spike_count is an integer 0..T, so with T=4 the 78-97% of neurons that never fire ALL get sc_rate exactly 1.0 and are indistinguishable -- and the wta_rev backward hands every one of them the same gradient, which is why every weighting variant collapses onto one curve. Adding the charge the neuron is still holding separates 'almost fired' from 'far below threshold'. gain=0 reproduces the current behaviour exactly. Raising gain lowers mean(sc_rate) somewhat (~0.96 -> ~0.83 at gain=4), so the effective lambda drops by roughly that ratio.")
+flags.DEFINE_float('reg_spike_wta_rev_floor',0.0,"floor on the wta_rev backward denominator: grad = sc_rate/sqrt(sum(x^2) + f*sum(sc_rate^2)). Without it the denominator is ||x|| = sqrt(sum over FIRING neurons of sc_rate^2), which shrinks as the regularizer succeeds, so the per-neuron pressure GROWS the deeper you go (spikes 78K->21K roughly doubles it). sum(sc_rate^2) runs over ALL neurons and stays ~0.8-1.0*N throughout training (78-97% of neurons are silent and get sc_rate=1), so it is a stable reference scale. f=0 reproduces the current behaviour exactly; large f makes the pressure constant. Forward is untouched, so R and the loss-ratio stay comparable.")
+flags.DEFINE_bool('reg_spike_loss_ratio_full',False,'loss-ratio denominator = TOTAL loss instead of task loss. target becomes lambda*R/(L_task+lambda*R) so lambda = rho*L_task/((1-rho)*R). Differs from the default by a factor 1/(1-rho) = 1.00058 at rho=5.8e-4.')
+flags.DEFINE_bool('reg_spike_lr_brake',False,'loss-ratio brake: enforce the early-phase spike-cut speed limit')
+# direct spike-target control -- the rival to loss-ratio. lambda <- lambda * clip((S/S_target)^k,
+# 0.5, growth_cap) each epoch: above target -> grow, below -> shrink. Self-limiting by
+# construction (the loss-ratio death spiral S-down -> lambda-up cannot occur; below target the
+# drive reverses). S_target = starget_frac * S(first reg epoch), same train-mode accounting as
+# the brake. Run WITH the same brake flags for a fair head-to-head where the only difference is
+# the knob: loss share (rho) vs spike target (frac). See 사전 등록 §직접 제어 (26-08-14).
+flags.DEFINE_bool('reg_spike_starget',False,'direct spike-target lambda control (rival to loss-ratio)')
+# descent-rate cap: the two controllers failed in opposite ways (26-08-15 3-point result).
+# loss-ratio overshoots mid-run (V16-C100: min 0.089 then rebound 1.50); direct control dives
+# once it nears a deep target (R19-C10: hit target ep39, inner layer died ep40). This caps how
+# fast S may fall per epoch at ALL epochs, so a controller can approach a target but not lunge
+# at it. Combined with reg_spike_starget it is candidate ①: self-stabilising target control
+# that also cannot dive.
+flags.DEFINE_float('reg_spike_descent_cap',0.0,'max fractional drop of S per epoch (e.g. 0.05 = at most 5%/epoch); 0 disables. Applied by shrinking lambda when the drop exceeds it.')
+# fixed-schedule lambda for the brake-causality test: ramp lambda 0 -> lmax linearly between
+# two epochs, with no feedback at all. Running the same final sparsity as an early ramp vs a
+# late ramp turns "cutting early is what hurts" from a retrospective correlation (189 runs)
+# into an intervention.
+flags.DEFINE_integer('reg_spike_ramp_start_ep',-1,'fixed ramp: epoch where lambda starts rising (-1 disables)')
+flags.DEFINE_integer('reg_spike_ramp_end_ep',-1,'fixed ramp: epoch where lambda reaches reg_spike_out_const')
+flags.DEFINE_float('reg_spike_starget_frac',0.1,'target spikes as a fraction of first-epoch train-mode spikes')
+flags.DEFINE_float('reg_spike_starget_k',1.0,'gain exponent on (S/S_target)')
+flags.DEFINE_float('reg_spike_starget_lmb0',1e-9,'initial lambda (multiplicative rule cannot start from 0)')
+flags.DEFINE_integer('reg_spike_lr_brake_ep',30,'brake window: floor is enforced for epochs < this')
+flags.DEFINE_float('reg_spike_lr_brake_floor',0.22,'brake floor on S(e)/S(1) inside the window. Harm threshold measured at 0.19; 0.22 leaves a margin, healthy runs sit at 0.28+ so it stays inactive for them')
+flags.DEFINE_float('reg_spike_lr_brake_decay',0.5,'lambda multiplier applied while below the floor')
+flags.DEFINE_float('reg_spike_lr_growth_cap',1.5,'max lambda growth factor per epoch (all epochs); bounds the R->0 runaway')
 
 flags.DEFINE_bool('reg_spike_epoch_ramp',False,'epoch-based lambda ramp: lambda = lmax * (epoch/total)^power, no LR dependency')
 flags.DEFINE_float('reg_spike_epoch_ramp_power',3.0,'epoch ramp: power exponent')

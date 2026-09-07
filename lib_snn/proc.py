@@ -991,6 +991,12 @@ def spike_count_epoch_init(self):
 
     self.spike_count_total = 0
 
+    # loss-ratio control needs list_sc_loss even with detail logging off
+    if conf.reg_spike_loss_ratio and not conf.reg_spike_log_detail:
+        self.list_sc_loss = collections.OrderedDict()
+        for neuron in self.model.layers_w_neuron:
+            self.list_sc_loss[neuron.name] = 0
+
     if conf.reg_spike_log_detail:
         self.list_sc_rate = collections.OrderedDict()
         self.list_sc_loss = collections.OrderedDict()
@@ -1230,13 +1236,90 @@ def spike_count_epoch_end(self,epoch,logs,num_ds):
         if epoch < conf.reg_spike_loss_ratio_start_ep or R <= 0.0:
             new_lambda = 0.0
         else:
-            new_lambda = conf.reg_spike_loss_ratio_target * task_loss / R
+            rho = conf.reg_spike_loss_ratio_target
+            if conf.reg_spike_loss_ratio_full:
+                # target is the SHARE of the total loss: lambda*R/(L_task+lambda*R) = rho
+                #   -> lambda = rho*L_task / ((1-rho)*R)
+                new_lambda = rho * task_loss / (max(1.0 - rho, 1e-8) * R)
+            else:
+                # target is the RATIO to the task loss: lambda*R/L_task = rho
+                new_lambda = rho * task_loss / R
             new_lambda = min(max(new_lambda, 0.0), 1e-4)   # sanity bounds only
+
+        # early-phase speed-limit brake (see flags.py reg_spike_lr_brake for the evidence).
+        # S_ep: this epoch's train-mode spike total (list_spike_count is per-sample by now,
+        # negative entries are the n_in/predictions markers).
+        brake_on = 0.0
+        if conf.reg_spike_lr_brake and epoch >= conf.reg_spike_loss_ratio_start_ep:
+            S_ep = float(sum(v for v in self.list_spike_count.values() if v > 0))
+            if not hasattr(self, '_lr_brake_S1'):
+                self._lr_brake_S1 = None
+            if self._lr_brake_S1 is None:
+                if S_ep > 0:
+                    self._lr_brake_S1 = S_ep
+            elif S_ep > 0:
+                s_ratio = S_ep / self._lr_brake_S1
+                logs['brake_s_ratio'] = s_ratio
+                in_window = epoch < conf.reg_spike_loss_ratio_start_ep + conf.reg_spike_lr_brake_ep
+                if in_window and s_ratio < conf.reg_spike_lr_brake_floor:
+                    # below the floor: back off instead of following the formula
+                    new_lambda = cur_lambda * conf.reg_spike_lr_brake_decay
+                    brake_on = 1.0
+                elif cur_lambda > 0.0:
+                    # growth cap at all epochs: bounds the R->0 -> lambda->inf feedback
+                    new_lambda = min(new_lambda, cur_lambda * conf.reg_spike_lr_growth_cap)
+            logs['brake_on'] = brake_on
+
         lib_snn.model.adaptive_lambda.assign(new_lambda)
         logs['adp_lambda'] = new_lambda
         logs['reg_R'] = R
         logs['task_loss_clean'] = task_loss
         logs['loss_ratio'] = reg_term / task_loss
+
+    # direct spike-target control (rival to loss-ratio; see flags.py reg_spike_starget)
+    if conf.reg_spike_starget and 'loss' in logs.keys():
+        cur_lambda = float(lib_snn.model.adaptive_lambda.numpy())
+        S_ep = float(sum(v for v in self.list_spike_count.values() if v > 0))
+        if not hasattr(self, '_st_S1'):
+            self._st_S1 = None
+        if self._st_S1 is None:
+            if S_ep > 0:
+                self._st_S1 = S_ep
+            new_lambda = conf.reg_spike_starget_lmb0
+        elif S_ep > 0:
+            target = conf.reg_spike_starget_frac * self._st_S1
+            ratio = (S_ep / target) ** conf.reg_spike_starget_k
+            ratio = min(max(ratio, 0.5), conf.reg_spike_lr_growth_cap)
+            base = cur_lambda if cur_lambda > 0 else conf.reg_spike_starget_lmb0
+            new_lambda = base * ratio
+            # same early-phase brake as loss-ratio, for a fair head-to-head
+            if conf.reg_spike_lr_brake:
+                s_ratio = S_ep / self._st_S1
+                logs['brake_s_ratio'] = s_ratio
+                if epoch < conf.reg_spike_lr_brake_ep and s_ratio < conf.reg_spike_lr_brake_floor:
+                    new_lambda = cur_lambda * conf.reg_spike_lr_brake_decay
+                    logs['brake_on'] = 1.0
+                else:
+                    logs['brake_on'] = 0.0
+            # descent-rate cap: if spikes fell faster than allowed this epoch, back lambda off
+            # instead of letting the controller lunge at the target (see flags.py).
+            if conf.reg_spike_descent_cap > 0.0:
+                prev_S = getattr(self, '_st_prev_S', None)
+                if prev_S and prev_S > 0:
+                    drop = 1.0 - S_ep / prev_S
+                    logs['descent'] = drop
+                    if drop > conf.reg_spike_descent_cap:
+                        new_lambda = min(new_lambda, cur_lambda * conf.reg_spike_lr_brake_decay)
+                        logs['descent_capped'] = 1.0
+                    else:
+                        logs['descent_capped'] = 0.0
+                self._st_prev_S = S_ep
+            new_lambda = min(new_lambda, 1e-4)
+            logs['st_ratio'] = S_ep / target
+        else:
+            new_lambda = cur_lambda
+        lib_snn.model.adaptive_lambda.assign(new_lambda)
+        logs['adp_lambda'] = new_lambda
 
     # LR-linked safety valve
     if conf.reg_spike_lr_linked_safety and 'val_acc' in logs.keys():

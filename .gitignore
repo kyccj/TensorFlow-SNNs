@@ -1,8 +1,10 @@
-.ckpt
-.log
-.xlsx
-.png
-.pyc
+# --- 기존 항목 (확장자 패턴 수정) ---
+# `.log` 처럼 점으로 시작하면 '.log 라는 이름의 파일' 만 잡는다. train.log 는 안 잡혔다.
+*.ckpt
+*.log
+*.xlsx
+*.png
+*.pyc
 .idea/
 __pycache__/
 models_ckpt/
@@ -11,3 +13,29 @@ spike_pattern_anal/
 venv/
 ILVRC2012_training_filename
 tmp/
+
+# --- 실험 산출물 ---
+# 스윕 소스 디렉토리 (config_sweep.py / main_sweep.py / train.log 가 드는 곳).
+# `_release/` 만 예외 — 논문 공개용으로 선별한 런의 TB·ckpt 를 여기에 모은다.
+_*/
+!_release/
+
+# 체크포인트 출력 디렉토리는 exp_set_name 에서 생성돼 이름이 제각각이라 패턴으로 못 잡는다.
+# 대신 그 안에 드는 파일을 전부 무시하면 디렉토리째 status 에서 사라진다.
+*.weights.h5
+reg_detail.csv
+reg_neuron_detail.csv
+
+tensorboard/
+
+# 오케스트레이션 상태
+.omc/
+
+# --- 대용량 산출물 (26-09-07) ---
+# speck_specksim_portable/ 는 40GB, EIP_figure/ 2.2GB, tar.gz 200MB.
+# 실험 출력 디렉토리는 이름이 exp_set_name 에서 생성돼 패턴으로 못 잡으므로 개별 지정.
+speck_specksim_portable/
+speck_specksim_portable.tar.gz
+EIP_figure/
+gapfill-gap_r19c10_2e-7/
+all_experiment_results.csv

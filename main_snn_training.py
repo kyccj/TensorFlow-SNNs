@@ -29,9 +29,16 @@ import os
 #tf.keras.backend.set_floatx('float16')
 
 #
-#SEED=0
-#os.environ["PYTHONHASHSEED"] = str(SEED)
-#tf.keras.utils.set_random_seed(SEED)
+# 시드 — conf.run_seed 가 -1 이면(기본) 손대지 않는다. 2026-09-03 이전 결과가 전부 그 상태라,
+# 기존 곡선에 점을 더할 때는 -1 로 둬야 조건이 같다. 복제마다 '다른' 값을 줘야 한다
+# (같은 값이면 반복 실험이 전부 동일한 런이 된다).
+if config.flags.run_seed >= 0:
+    _SEED = config.flags.run_seed
+    os.environ["PYTHONHASHSEED"] = str(_SEED)
+    tf.keras.utils.set_random_seed(_SEED)
+    print(f'[SEED] run_seed={_SEED} (python/numpy/tf 고정)')
+else:
+    print('[SEED] run_seed=-1 — RNG 손대지 않음 (2026-09-03 이전과 동일 조건)')
 
 
 ########################################

@@ -2032,7 +2032,15 @@ def l2_norm_wta_rev(x, sc_rate, name):
         # x = spike * sc_rate
         # standard gradient: x / ||x|| -> zero when spike=0
         # modified gradient: sc_rate / ||x|| -> non-zero for all neurons
-        dy_dx = tf.multiply(sc_rate, tf.math.rsqrt(tf.reduce_sum(tf.square(x))))
+        den_sq = tf.reduce_sum(tf.square(x))
+        if conf.reg_spike_wta_rev_floor > 0.0:
+            # ||x|| only sums over FIRING neurons, so it shrinks as the regularizer
+            # succeeds and the per-neuron pressure grows. Add a floor built from a
+            # quantity that does NOT shrink: sum(sc_rate^2) over ALL neurons, which
+            # stays ~0.8-1.0*N because 78-97% of neurons are silent with sc_rate=1.
+            ref_sq = tf.stop_gradient(tf.reduce_sum(tf.square(sc_rate)))
+            den_sq = den_sq + tf.cast(conf.reg_spike_wta_rev_floor, den_sq.dtype) * ref_sq
+        dy_dx = tf.multiply(sc_rate, tf.math.rsqrt(den_sq))
         condition = tf.math.count_nonzero(x, dtype=tf.int32) == 0
         ret_grad = tf.where(condition, tf.zeros(upstream.shape), upstream * dy_dx)
 
