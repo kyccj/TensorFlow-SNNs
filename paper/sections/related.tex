@@ -37,7 +37,7 @@ effect, activity-based pruning
 and that existing activity regularisation has structural limitations
 \cite{bu2025activity}; we concede both as confirmation of prior work, not our
 contribution (Section~\ref{sec:intro} gives the neuron-count evidence). We
-add three things instead: the neuron-usage difference at a matched spike budget; the observation that methods differ in \emph{how} they reduce spikes---the proposed one keeping per-neuron spike intensity closest to the unregularised network (1.621 spikes per active neuron) while silencing more neurons, rather than weakening every neuron uniformly, as plain $L_2$ does (1.284 spikes per neuron); and setting the regularisation strength by a ratio against the task loss rather than by hand.
+add three things instead: the neuron-usage difference at a matched spike budget; the observation that methods differ in \emph{how} they reduce spikes. The proposed method keeps per-neuron spike intensity at 1.479 spikes per active neuron, closest to the unregularised network (1.621), while silencing more neurons, rather than weakening every neuron uniformly as plain $L_2$ does (1.284 spikes per neuron); and setting the regularisation strength by a ratio against the task loss rather than by hand.
 
 \subsection{Balancing auxiliary loss terms}
 Outside SNNs, a separate line sets an auxiliary loss weight automatically
