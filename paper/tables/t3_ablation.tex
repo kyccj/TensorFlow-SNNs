@@ -30,7 +30,7 @@ w/o inversion & 0.5948 & 95.79 & 0.5923 & 96.61 & 432,977 & -- & -- \\
 Mean ($n=2$) & 0.5955 & 95.745 & 0.5934 & 96.565 & 437,011 & -- & 1.5300 ($n{=}2$) \\
 \bottomrule
 \end{tabular}
-\caption{Ablation, tier A: all arms at the same $\rho=4\times10^{-3}$ (spec \S 12-4 tier A). Removing a component changes the neuron budget $R$, so the auto-solved strength moves the landing point in spike count even though $\rho$ is held fixed -- that movement is itself the result (spec \S 2 A9). $\Delta$ vs curve is the accuracy offset against the fitted accuracy-spike curve (spec \S 2 A6); only the sub-threshold term ablation has this statistic computed at this sample size, so the other two arms show \texttt{--}. Spikes / neuron is drawn from a separate neuron-level extraction (spec \S 8) whose run count differs from the accuracy columns and is cited per row; arms with $n<4$ report $n$ only, with no fabricated standard deviation.}
+\caption{Ablation, tier A: all arms at the same $\rho=4\times10^{-3}$. Removing a component changes the neuron budget $R$, so the auto-solved strength moves the landing point in spike count even though $\rho$ is held fixed -- that movement is itself the result. $\Delta$ vs curve is the accuracy offset against the fitted accuracy-spike curve; only the sub-threshold term ablation has this statistic computed at this sample size, so the other two arms show \texttt{--}. Spikes / neuron is drawn from a separate neuron-level extraction whose run count differs from the accuracy columns and is cited per row; arms with $n<4$ report $n$ only, with no fabricated standard deviation.}
 \label{tab:t3_ablation}
 \end{table}
 

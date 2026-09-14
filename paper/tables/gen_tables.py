@@ -139,7 +139,7 @@ def wrap_table(caption, label, body_lines):
 
 
 # ---------------------------------------------------------------------------
-# T1 — R19-C10 주 비교표 (스펙 §2 A1/A1b, figures-tables.md T1)
+# T1 — R19-C10 주 비교표 (스펙 §2 A1/A1b/§12-1, figures-tables.md T1)
 # ---------------------------------------------------------------------------
 
 def gen_t1(rows, out_path):
@@ -154,7 +154,7 @@ def gen_t1(rows, out_path):
     caption = (
         'ResNet-19 / CIFAR-10, best-val\\_acc epoch, eval/test spike counts. '
         'Repeated runs show every individual run with the group mean directly '
-        'below (pre-registered selection rules, spec \\S 2 A1/\\S 12-1).'
+        'below (pre-registered selection rules, \\S\\ref{sec:exp-setup}).'
     )
     tex = wrap_table(caption, 'tab:t1_main', lines)
     os.makedirs(os.path.dirname(out_path) or '.', exist_ok=True)
@@ -164,7 +164,7 @@ def gen_t1(rows, out_path):
 
 
 # ---------------------------------------------------------------------------
-# T3 -- Ablation, tier A: same rho=4e-3 (스펙 §12-4 tier A, §2 A5/A6/A9,
+# T3 -- Ablation, tier A: same rho=4e-3 (스펙 §12-4 tier A, §2 A5/A6/A9, §8,
 # figures-tables.md T3, docs/paper/method-terms.md for row names)
 # ---------------------------------------------------------------------------
 
@@ -266,15 +266,15 @@ def gen_t3(rows, out_path):
         *lines,
         '\\bottomrule',
         '\\end{tabular}',
-        '\\caption{Ablation, tier A: all arms at the same $\\rho=4\\times10^{-3}$ '
-        '(spec \\S 12-4 tier A). Removing a component changes the neuron budget $R$, '
+        '\\caption{Ablation, tier A: all arms at the same $\\rho=4\\times10^{-3}$. '
+        'Removing a component changes the neuron budget $R$, '
         'so the auto-solved strength moves the landing point in spike count even '
-        'though $\\rho$ is held fixed -- that movement is itself the result (spec '
-        '\\S 2 A9). $\\Delta$ vs curve is the accuracy offset against the fitted '
-        'accuracy-spike curve (spec \\S 2 A6); only the sub-threshold term ablation '
+        'though $\\rho$ is held fixed -- that movement is itself the result. '
+        '$\\Delta$ vs curve is the accuracy offset against the fitted '
+        'accuracy-spike curve; only the sub-threshold term ablation '
         'has this statistic computed at this sample size, so the other two arms show '
         '\\texttt{--}. Spikes / neuron is drawn from a separate neuron-level '
-        'extraction (spec \\S 8) whose run count differs from the accuracy columns '
+        'extraction whose run count differs from the accuracy columns '
         'and is cited per row; arms with $n<4$ report $n$ only, with no fabricated '
         'standard deviation.}',
         '\\label{tab:t3_ablation}',
@@ -340,7 +340,7 @@ def gen_t4(rows, out_path):
         *lines,
         '\\bottomrule',
         '\\end{tabular}',
-        '\\caption{Training cost, 310-epoch average (spec \\S 2 A7); per-run standard '
+        '\\caption{Training cost, 310-epoch average; per-run standard '
         'deviation is 25--30\\,ms ($\\approx$4\\%). Turning on any regulariser costs '
         '7--33\\% over the unregularised baseline; the proposed regulariser at 10\\% '
         'is cheaper than every other regularised comparison arm but not cheaper than '
@@ -395,13 +395,13 @@ def gen_t8(rows, out_path):
             lines.append(render_mean_row(len(arm_rows))(arm_rows))
     tex = wrap_table(
         'CIFAR-100 / ResNet-19, the only generality measurement available as of '
-        '2026-09-14 (spec \\S 2 B2). Baseline has $n=3$; Plain $L_2$ and the proposed '
+        '2026-09-14. Baseline has $n=3$; Plain $L_2$ and the proposed '
         'regulariser have $n=1$ each, so no error bar is reported for them and no '
         'accuracy-spike curve can be fit -- the landing points do not match '
         '(211,350 vs.\\ 253,049 spikes). \\textbf{This table is not evidence of '
         'generality}: gate G3 (CIFAR-100, $n\\geq3$ per condition) is unmet, and '
         'gates G6 (Spikformer / CIFAR10-DVS re-run with the proposed regulariser) '
-        'and G8 (SDT-V3, 173M) have no data at all (spec \\S 2 C4, C5). Kept out of '
+        'and G8 (SDT-V3, 173M) have no data at all. Kept out of '
         'the main body until a gate opens (\\texttt{figures-tables.md} T8).',
         'tab:t8_generality', lines)
     os.makedirs(os.path.dirname(out_path) or '.', exist_ok=True)

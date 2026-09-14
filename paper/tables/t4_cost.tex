@@ -13,6 +13,6 @@ Plain $L_2$ & 712 & 357 & 30.7h & +12.8\% \\
 w/o final-step (per-time-step application) & 841 & 421 & 36.2h & +33.2\% \\
 \bottomrule
 \end{tabular}
-\caption{Training cost, 310-epoch average (spec \S 2 A7); per-run standard deviation is 25--30\,ms ($\approx$4\%). Turning on any regulariser costs 7--33\% over the unregularised baseline; the proposed regulariser at 10\% is cheaper than every other regularised comparison arm but not cheaper than the unregularised baseline. The last row applies the spike-count loss at every time step instead of once at the final step, isolating the single-step application's contribution to the 10\% figure.}
+\caption{Training cost, 310-epoch average; per-run standard deviation is 25--30\,ms ($\approx$4\%). Turning on any regulariser costs 7--33\% over the unregularised baseline; the proposed regulariser at 10\% is cheaper than every other regularised comparison arm but not cheaper than the unregularised baseline. The last row applies the spike-count loss at every time step instead of once at the final step, isolating the single-step application's contribution to the 10\% figure.}
 \label{tab:t4_cost}
 \end{table}

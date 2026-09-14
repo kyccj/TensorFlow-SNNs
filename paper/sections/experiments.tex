@@ -104,8 +104,9 @@ term, the single-step application (the spike-count loss applied only at
 $t=T$ instead of at every time step), and the $1{-}$ inversion -- removing
 each in turn while holding the ratio controller's target $\rho$ fixed at
 $4\times10^{-3}$, the same setting used for the proposed regulariser in
-Table~\ref{tab:t1_main}. Table~\ref{tab:t3_ablation} (tier A of the design
-in spec \S 12-4) reports this same-$\rho$ comparison. Removing a component
+Table~\ref{tab:t1_main}. Table~\ref{tab:t3_ablation} (tier A of the design)
+% design tier naming: spec \S 12-4
+reports this same-$\rho$ comparison. Removing a component
 changes the active neuron budget that the ratio controller solves against,
 so the strength that $\rho=4\times10^{-3}$ resolves to differs per arm and
 the landing point in spike count moves accordingly -- that movement is
@@ -191,9 +192,10 @@ validation accuracy at 446,134 spikes; Plain $L_2$ at
 $\lambda=5\times10^{-7}$ ($n=1$) reaches $80.66\%$ at 253,049 spikes; the
 proposed regulariser at $\rho=3\times10^{-3}$ ($n=1$) reaches $80.37\%$ at
 211,350 spikes, a 52.6\% reduction from the baseline. These numbers are the
-only generality measurement available (gates G3, G6, G8 unmet, spec \S 2
-B2/C4/C5; the corresponding table is kept out of both the main body and the
-appendix until one opens): with $n=1$ for the two regularised arms there is no
+only generality measurement available (gates G3, G6, G8 unmet; the
+corresponding table is kept out of both the main body and the appendix
+% gate refs: spec \S 2 B2/C4/C5
+until one opens): with $n=1$ for the two regularised arms there is no
 error bar, and because their landing points do not match, no
 accuracy-spike curve can be fit for this combination the way it can for
 CIFAR-10 (Table~\ref{tab:t1_main}). Spikformer and CIFAR10-DVS have only
@@ -222,8 +224,8 @@ underneath a matched point on the curve.
 On ResNet-19/CIFAR-10, at matched spike counts, the proposed regulariser
 uses fewer active neurons than Plain $L_2$. Across the full set of runs
 with per-neuron logging that pass the pre-registered completion and
-$S_{30}/S_1 \geq 0.19$ filter (spec \S 12-1, rule 3's top-4 cap is not
-applied here -- it standardises a reporting table's $n$, not a
+$S_{30}/S_1 \geq 0.19$ filter (\S\ref{sec:exp-setup}; rule 3's top-4 cap is
+not applied here -- it standardises a reporting table's $n$, not a
 regression's), a regression of log active neurons on log spike count and
 method gives a coefficient whose exponentiated form is $0.869$ ($t=-21.5$, $n=21$): the method term multiplies active-neuron count by $0.869$, a $13.1\%$ reduction at a
 given spike count. This is a fitted relationship over the whole
@@ -237,7 +239,8 @@ for the general claim; the pair is not offered as proof of it.
 Table~\ref{tab:t1_main}'s.} The per-neuron logging this analysis needs
 only exists in training-mode logs, so both the 193K figures above and
 Figure~\ref{fig:f4_active}'s axis are training-mode spike counts, not the
-eval/test-mode counts used everywhere else in this paper (spec \S 9-G);
+eval/test-mode counts used everywhere else in this paper;
+% protocol distinction: spec \S 9-G
 for the two runs behind the closest-landing pair, the training-mode count
 is $2.6\%$ and $2.7\%$ higher than that same run's eval-mode count
 (188,208 and 187,911 eval vs.\ 193,129 and 193,083 training). Read the
@@ -258,7 +261,8 @@ both axes are raw counts. The two fitted lines are parallel across the
 whole spike range shown, not only at the single closest-landing pair
 quoted in the text. The spike axis is the training-mode count, not the
 eval/test-mode count Table~\ref{tab:t1_main} uses, and runs by $2$--$3\%$
-higher (spec \S 9-G). Active-neuron counts are computed from
+% protocol distinction: spec \S 9-G
+higher. Active-neuron counts are computed from
 \texttt{dead\_neuron\_ratio} measured on a 100-image batch, not a
 permanently-silent-neuron count; the neuron-count gap is an early- and
 middle-layer phenomenon and the three conditions are not distinguishable
@@ -303,7 +307,8 @@ is what produces it.
 \caption{Per-layer spike concentration, ResNet-19/CIFAR-10, unregularised
 baseline vs.\ Plain $L_2$ vs.\ the proposed regulariser, at the closest-landing
 spike pair (193K training-mode, quoted in the text -- not directly
-comparable to Table~\ref{tab:t1_main}'s eval-mode counts, spec \S 9-G).
+comparable to Table~\ref{tab:t1_main}'s eval-mode counts).
+% protocol distinction: spec \S 9-G
 Left: Gini coefficient of per-neuron spike counts. Right: share of a
 layer's spikes carried by its top 10\% of neurons. In both panels the
 three conditions separate in the early and middle layers and converge
