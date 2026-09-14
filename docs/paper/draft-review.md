@@ -266,3 +266,70 @@ Discussion으로 옮겨라"고 명시한다. 2026-09-14 기준 G4는 여전히 �
 - **분량:** 근사 6.1–6.2 / 8페이지(추정, 미실측).
 - **구조 결함(신규 발견):** `\ref{tab:t8_generality}`·`\ref{fig:f5_intensity}` 댕글링 참조 2건, T2 표 부재 1건.
 - **중복:** 축자 반복 0건. 나머지 5쌍 전부 정당한 서론-본문 구조.
+
+---
+
+## Fix Round 1 (2026-09-14) — team-lead 판정에 따른 6건 수정
+
+**1. 댕글링 참조 (Critical) — 수정 완료.** `paper/main.tex`에 `\appendix` + `\input{sections/appendix}`
+추가, `paper/sections/appendix.tex` 신설(재현성 서브섹션 + F5 `\input`). F5 는 게이트가 없어
+그대로 부록에 넣었다. T8 은 G3/G6/G8 미충족이라 계속 뺀다 — `experiments.tex:193`의
+`Table~\ref{tab:t8_generality} in the appendix` 문구 자체를 지우고, 표 없이도 뜻이 통하도록
+문단을 다시 썼다("the corresponding table is kept out of both the main body and the
+appendix until one opens"). F6 은 애초에 라이브 참조가 없었음을 재확인(주석 안에만 있었음).
+
+**2. T2 부재 (Important) — 수정 완료.** `docs/paper/figures-tables.md`의 T2 행을 "미작성 —
+문헌 값 수집 필요"로 갱신하고 "8쪽 여유가 있는 한 유지" 서술과 "T2 → T8 순으로 본문에
+올리고"라는 상단 문구를 함께 고쳤다. `.tex` 어디에도 T2 참조가 없음을 재확인(0건). 표를
+새로 만들지 않았다.
+
+**3. §9-I 누락 (Important) — 수정 완료.** `paper/sections/appendix.tex`의 "Reproducibility"
+서브섹션에 spec §9-I 세 요소(`ls -A`가 `.git`/`.omc`/`__pycache__`를 옮긴 사고와 복구,
+`rsync --remove-source-files`가 실행 중인 6런의 tfevents inode 를 지운 사고와 `/proc/<pid>/fd/N`
+복구, 첫 확인이 grep 패턴 오류로 "정상"이라 오보한 것)를 그대로 적었다 — 사과 없이, 사실만.
+
+**4. λ 수치 stale (Important) — 수정 완료.** `discussion.tex`를 "36.9%, $4.71\times10^{-7}$
+(epoch 200) → $2.97\times10^{-7}$ (epoch 201)"로 교체했다. spec §9-B 항목 자체도 재실행
+로그를 박아 넣고 "이 절의 수치가 이제 정본"이라고 명시해, F4 회귀와 같은 원칙("재현 가능한
+값이 이긴다")을 적용했다. 재실행 로그는 아래 검증 참조.
+
+**5. related.tex:51 주석 (Important) — 수정 완료.** "G4 미충족 시 Discussion 으로 옮겨라"는
+지시를 지우고, "2026-09-14 사용자 결정으로 §2에 조건부 서술로 유지, 이 메모가 그 결정을
+기록하며 더 이상 실행 대상이 아니다"로 교체했다. 본문(§2.4 서브섹션 자체)은 건드리지 않았다.
+
+**6. 파일 경로 노출 (Minor) — 수정 완료(intro.tex만).** `intro.tex`의 CLI 명령을
+`\footnote{}`로 옮겼다("Measured with \texttt{extract\_neuron\_spikes.py --split test
+--n 10000}."). `discussion.tex:123-124`의 `run_paper.py`/`.gitignore`는 판정대로 그대로
+둔다 — 재현성 한계를 고지하는 문장의 본체이므로 파일명 노출이 곧 그 고지다.
+
+### 검증
+
+```
+$ cd EIP_fig && python lambda_epoch.py
+λ: ep1 4.35e-07  ep100 4.85e-07  ep200 4.71e-07  ep201 2.97e-07  ep310 2.58e-07  시간평균 4.00e-07
+최종 val_acc: 제안법 96.46 / 고정 3e-7 96.29 / 고정 5e-7 96.39
+```
+
+```
+$ python paper/texcheck.py paper
+검사한 .tex 15개, refs.bib 키 28개, 문제 0건
+```
+
+댕글링 `\ref` 재검사 — `main.tex`부터 실제 `\input`되는 파일만 추적해(주석 제외) 모든 `\label`을
+모으고 모든 `\ref`를 대조하는 스크립트를 돌렸다:
+
+```
+Live (transitively \input) files: figures/f5_intensity.tex, main.tex,
+  sections/{abstract,appendix,conclusion,discussion,experiments,intro,method,related}.tex,
+  tables/{t1_main,t3_ablation,t4_cost}.tex
+Dangling \ref (label not defined in any live/\input file): none
+```
+
+**분량 재추정 (부록 추가 반영, 여전히 추정치 — 엔진 없음).** appendix.tex 151 단어 +
+단일 컬럼 F5 그림 1개가 늘었다. 나머지 절 단어 수는 사실상 그대로(intro 696, related 484,
+experiments 2625, discussion 1088, conclusion 100). 본문+부록 합계 약 5,150단어,
+같은 밀도 가정(~1,500단어/페이지) + figure* 2개(~0.7p) + 표 3개(~0.35p) + 부록 F5(~0.2p)로
+**~3.4(텍스트) + 0.7 + 0.35 + 0.2 ≈ 4.65페이지**, 여기에 Method 예산 1.5페이지를 더하면
+**~6.1–6.2 / 8페이지** — Fix Round 1 이전 추정과 사실상 동일하다(부록이 작아서 영향이 작음).
+
+Commit: (아래 참조)

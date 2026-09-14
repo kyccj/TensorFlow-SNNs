@@ -41,10 +41,10 @@ strength, which differs from the fixed comparison value. Isolating the two
 needs eight further runs, matched by landing point and by average $\lambda$
 respectively, not yet run.
 
-A related question is why $\lambda$ moves the way it does. It drops 44\% at
-epoch 201, from $4.75\times10^{-7}$ to $2.68\times10^{-7}$, coinciding with
-CutMix being turned off; whether it also coincides with a specific point in
-the learning-rate schedule has not been checked. If it does, the ratio
+A related question is why $\lambda$ moves the way it does. It drops 36.9\% from
+epoch 200 to epoch 201, from $4.71\times10^{-7}$ to $2.97\times10^{-7}$,
+coinciding with CutMix being turned off; whether it also coincides with a
+specific point in the learning-rate schedule has not been checked. If it does, the ratio
 controller would be indirectly coupled to the training schedule in the same
 way an earlier, abandoned LR-linked variant of this method was, and the
 claim that regularisation strength requires no external tuning would need

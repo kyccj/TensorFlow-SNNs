@@ -53,10 +53,10 @@ our regulariser silences some neurons outright.
 So what does using fewer neurons change in practice? We answer this not with the
 fraction of neurons quiet on a given image, but with the fraction of neurons that never
 fire across the entire test set. Over all 10,000 test images, the permanently silent
-fraction is __G5_SILENT_RATIO__ (filled by
-\texttt{python extract\_neuron\_spikes.py --split test --n 10000}). The silence
-fractions reported elsewhere in this paper are measured on 100-image batches and cannot
-be read as ``permanently dead neurons'' --- conflating the two would overstate the
+fraction is __G5_SILENT_RATIO__.\footnote{Measured with
+\texttt{extract\_neuron\_spikes.py --split test --n 10000}.} The silence fractions
+reported elsewhere in this paper are measured on 100-image batches and cannot be
+read as ``permanently dead neurons'' --- conflating the two would overstate the
 pruning benefit.
 
 % ALT (G7): replace the G5 paragraph above with this one once Speck measurements exist

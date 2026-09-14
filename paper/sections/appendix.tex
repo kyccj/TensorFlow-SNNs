@@ -1,0 +1,23 @@
+\section{Appendix}
+\label{sec:appendix}
+
+\subsection{Reproducibility}
+\label{sec:appendix-repro}
+
+Two infrastructure incidents occurred during this project and are recorded here rather
+than omitted. During a repository root cleanup, an \texttt{ls -A} glob unintentionally
+moved \texttt{.git}, \texttt{.omc}, and \texttt{\_\_pycache\_\_} alongside the
+directories it was meant to reorganise; all three were restored and \texttt{git fsck}
+reported no corruption. Separately, during a migration of run data to a second hard
+drive, \texttt{rsync --remove-source-files} deleted the \texttt{tfevents} inodes of six
+runs that were still training and writing to them; the open file handles were recovered
+by copying from \texttt{/proc/<pid>/fd/N} for the twelve affected file descriptors, with
+at most two minutes of logging lost per run. The first check performed after this
+incident used a faulty grep pattern and incorrectly reported the runs as unaffected; we
+record that false negative alongside the incident itself, since a reproducibility
+appendix that omits it is worth less than none.
+
+\subsection{Per-neuron firing intensity}
+\label{sec:appendix-intensity}
+
+\input{figures/f5_intensity}
