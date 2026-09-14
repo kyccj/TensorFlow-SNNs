@@ -1,0 +1,353 @@
+% EIP 논문 참고문헌 데이터베이스
+% 생성: 2026-09-14. 각 항목의 검증 상태는 docs/paper/refs-audit.md 참조.
+% 미확인 항목은 본문에서 인용하지 않는다.
+
+%% ============================================================
+%% A. 선점 대응
+%% ============================================================
+
+@inproceedings{bu2025activity,
+  author    = {Bu, Tong and Shi, Xinyu and Yu, Zhaofei},
+  title     = {Activity Pruning for Efficient Spiking Neural Networks},
+  booktitle = {Advances in Neural Information Processing Systems 38 (NeurIPS 2025)},
+  year      = {2025},
+  doi       = {10.52202/085713-5700},
+  note      = {arXiv 미러 없음. OpenReview: openreview.net/forum?id=zjOXZEXQKZ.
+               DBLP key conf/nips/BuSY25. 권 번호 미확인.}
+}
+
+@article{li2024spiking,
+  author  = {Li, Yaxin and Xu, Qi and Shen, Jiangrong and Xu, Hongming
+              and Chen, Long and Pan, Gang},
+  title   = {Towards Efficient Deep Spiking Neural Networks Construction
+             with Spiking Activity based Pruning},
+  journal = {Proceedings of Machine Learning Research},
+  volume  = {235},
+  pages   = {29063--29073},
+  year    = {2024},
+  note    = {ICML 2024. arXiv:2406.01072}
+}
+
+@inproceedings{yao2023inherent,
+  author    = {Yao, Man and Hu, Jiakui and Zhao, Guangshe and Wang, Yaoyuan
+               and Zhang, Ziyang and Xu, Bo and Li, Guoqi},
+  title     = {Inherent Redundancy in Spiking Neural Networks},
+  booktitle = {Proceedings of the IEEE/CVF International Conference on
+               Computer Vision (ICCV)},
+  pages     = {16924--16934},
+  year      = {2023},
+  note      = {arXiv:2308.08227}
+}
+
+%% ============================================================
+%% B. 스파이크 규제 계보 (직접 비교 대상)
+%% ============================================================
+
+@inproceedings{neil2016learning,
+  author    = {Neil, Daniel and Pfeiffer, Michael and Liu, Shih-Chii},
+  title     = {Learning to be Efficient: Algorithms for Training
+               Low-Latency, Low-Compute Deep Spiking Neural Networks},
+  booktitle = {Proceedings of the 31st Annual ACM Symposium on Applied
+               Computing (SAC)},
+  year      = {2016}
+}
+
+@article{sorbaro2020optimizing,
+  author  = {Sorbaro, Martino and Liu, Qian and Bortone, Massimo
+              and Sheik, Sadique},
+  title   = {Optimizing the Energy Consumption of Spiking Neural Networks
+             for Neuromorphic Applications},
+  journal = {Frontiers in Neuroscience},
+  volume  = {14},
+  pages   = {662},
+  year    = {2020},
+  doi     = {10.3389/fnins.2020.00662},
+  note    = {arXiv:1912.01268}
+}
+
+@inproceedings{pellegrini2021low,
+  author    = {Pellegrini, Thomas and Zimmer, Romain and Masquelier, Timoth{\'e}e},
+  title     = {Low-Activity Supervised Convolutional Spiking Neural Networks
+               Applied to Speech Commands Recognition},
+  booktitle = {2021 IEEE Spoken Language Technology Workshop (SLT)},
+  pages     = {97--103},
+  year      = {2021},
+  note      = {arXiv:2011.06846}
+}
+
+@misc{perez2022surrogate,
+  author = {Meda, Nandan},
+  title  = {Improving Surrogate Gradient Learning in Spiking Neural
+            Networks via Regularization and Normalization},
+  year   = {2022},
+  note   = {arXiv:2201.02538. 학사 학위논문(bachelor thesis) 형태로
+            공개됨 -- 저자 성은 Meda 이며 인용키의 perez 와
+            불일치. 키는 브리프에서 지정된 값을 그대로 유지함.}
+}
+
+@article{sakemi2023sparse,
+  author  = {Sakemi, Yusuke and Yamamoto, Kakei and Hosomi, Takeo
+              and Aihara, Kazuyuki},
+  title   = {Sparse-firing Regularization Methods for Spiking Neural
+             Networks with Time-to-first-spike Coding},
+  journal = {Scientific Reports},
+  volume  = {13},
+  pages   = {22897},
+  year    = {2023},
+  doi     = {10.1038/s41598-023-50201-5},
+  note    = {arXiv:2307.13007}
+}
+
+%% ============================================================
+%% C. 직접 학습 기초
+%% ============================================================
+
+@article{wu2018spatio,
+  author  = {Wu, Yujie and Deng, Lei and Li, Guoqi and Zhu, Jun and Shi, Luping},
+  title   = {Spatio-Temporal Backpropagation for Training High-Performance
+             Spiking Neural Networks},
+  journal = {Frontiers in Neuroscience},
+  volume  = {12},
+  pages   = {331},
+  year    = {2018},
+  note    = {arXiv:1706.02609}
+}
+
+@article{neftci2019surrogate,
+  author  = {Neftci, Emre O. and Mostafa, Hesham and Zenke, Friedemann},
+  title   = {Surrogate Gradient Learning in Spiking Neural Networks:
+             Bringing the Power of Gradient-Based Optimization to
+             Spiking Neural Networks},
+  journal = {IEEE Signal Processing Magazine},
+  volume  = {36},
+  number  = {6},
+  pages   = {51--63},
+  year    = {2019},
+  doi     = {10.1109/MSP.2019.2931595}
+}
+
+@inproceedings{wu2019direct,
+  author    = {Wu, Yujie and Deng, Lei and Li, Guoqi and Zhu, Jun
+               and Xie, Yuan and Shi, Luping},
+  title     = {Direct Training for Spiking Neural Networks: Faster,
+               Larger, Better},
+  booktitle = {Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume    = {33},
+  pages     = {1311--1318},
+  year      = {2019},
+  note      = {arXiv:1809.05793}
+}
+
+@inproceedings{zheng2021going,
+  author    = {Zheng, Hanle and Wu, Yujie and Deng, Lei and Hu, Yifan
+               and Li, Guoqi},
+  title     = {Going Deeper With Directly-Trained Larger Spiking Neural Networks},
+  booktitle = {Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume    = {35},
+  number    = {12},
+  pages     = {11062--11070},
+  year      = {2021},
+  doi       = {10.1609/aaai.v35i12.17320},
+  note      = {arXiv:2011.05280}
+}
+
+@inproceedings{deng2022temporal,
+  author    = {Deng, Shikuang and Li, Yuhang and Zhang, Shanghang and Gu, Shi},
+  title     = {Temporal Efficient Training of Spiking Neural Network via
+               Gradient Re-weighting},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2022},
+  note      = {arXiv:2202.11946}
+}
+
+@inproceedings{fang2021incorporating,
+  author    = {Fang, Wei and Yu, Zhaofei and Chen, Yanqi and Masquelier, Timoth{\'e}e
+               and Huang, Tiejun and Tian, Yonghong},
+  title     = {Incorporating Learnable Membrane Time Constant to Enhance
+               Learning of Spiking Neural Networks},
+  booktitle = {Proceedings of the IEEE/CVF International Conference on
+               Computer Vision (ICCV)},
+  pages     = {2661--2671},
+  year      = {2021},
+  note      = {arXiv:2007.05785}
+}
+
+%% ============================================================
+%% D. 아키텍처
+%% ============================================================
+
+@inproceedings{zhou2023spikformer,
+  author    = {Zhou, Zhaokun and Zhu, Yuesheng and He, Chao and Wang, Yaowei
+               and Yan, Shuicheng and Tian, Yonghong and Yuan, Li},
+  title     = {Spikformer: When Spiking Neural Network Meets Transformer},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2023},
+  note      = {arXiv:2209.15425}
+}
+
+@inproceedings{yao2023spikedriven,
+  author    = {Yao, Man and Hu, Jiakui and Zhou, Zhaokun and Yuan, Li
+               and Tian, Yonghong and Xu, Bo and Li, Guoqi},
+  title     = {Spike-driven Transformer},
+  booktitle = {Advances in Neural Information Processing Systems 36 (NeurIPS 2023)},
+  year      = {2023},
+  note      = {arXiv:2307.01694}
+}
+
+@inproceedings{yao2024metaspikeformer,
+  author    = {Yao, Man and Hu, Jiakui and Hu, Tianxiang and Xu, Yifan
+               and Zhou, Zhaokun and Tian, Yonghong and Xu, Bo and Li, Guoqi},
+  title     = {Spike-driven Transformer V2: Meta Spiking Neural Network
+               Architecture Inspiring the Design of Next-generation
+               Neuromorphic Chips},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2024},
+  note      = {일명 Meta-SpikeFormer / SDT-V2. arXiv:2404.03663}
+}
+
+@article{yao2025scaling,
+  author  = {Yao, Man and Qiu, Xuerui and Hu, Tianxiang and Hu, Jiakui
+              and Chou, Yuhong and Tian, Keyu and Liao, Jianxing
+              and Leng, Luziwei and Xu, Bo and Li, Guoqi},
+  title   = {Scaling Spike-driven Transformer with Efficient Spike Firing
+             Approximation Training},
+  journal = {IEEE Transactions on Pattern Analysis and Machine Intelligence},
+  volume  = {47},
+  number  = {4},
+  pages   = {2973--2990},
+  year    = {2025},
+  note    = {일명 SDT-V3. arXiv:2411.16061}
+}
+
+%% ============================================================
+%% E. 에너지 회계
+%% ============================================================
+
+@inproceedings{horowitz2014computing,
+  author    = {Horowitz, Mark},
+  title     = {1.1 Computing's Energy Problem (and What We Can Do About It)},
+  booktitle = {2014 IEEE International Solid-State Circuits Conference
+               Digest of Technical Papers (ISSCC)},
+  pages     = {10--14},
+  year      = {2014},
+  doi       = {10.1109/ISSCC.2014.6757323}
+}
+
+@inproceedings{lemaire2022analytical,
+  author    = {Lemaire, Edgar and Cordone, Loic and Castagnetti, Andrea
+               and Novac, Pierre-Emmanuel and Courtois, Jonathan
+               and Miramond, Benoit},
+  title     = {An Analytical Estimation of Spiking Neural Networks Energy
+               Efficiency},
+  booktitle = {International Conference on Neural Information Processing
+               (ICONIP)},
+  year      = {2022},
+  note      = {arXiv:2210.13107}
+}
+
+%% ============================================================
+%% F. 뉴로모픽 하드웨어
+%% ============================================================
+
+@article{yao2024spikebased,
+  author  = {Yao, Man and Richter, Ole and Zhao, Guangshe and Qiao, Ning
+              and Xing, Yannan and Wang, Dingheng and Hu, Tianxiang
+              and Fang, Wei and Demirci, Tugba and De Marchi, Michele
+              and Deng, Lei and Yan, Tianyi and Nielsen, Carsten
+              and Sheik, Sadique and Wu, Chenxi and Tian, Yonghong
+              and Xu, Bo and Li, Guoqi},
+  title   = {Spike-based Dynamic Computing with Asynchronous
+             Sensing-Computing Neuromorphic Chip},
+  journal = {Nature Communications},
+  volume  = {15},
+  pages   = {4464},
+  year    = {2024},
+  doi     = {10.1038/s41467-024-47811-6},
+  note    = {Speck 대표 인용}
+}
+
+%% ============================================================
+%% G. 데이터셋
+%% ============================================================
+
+@article{li2017cifar10dvs,
+  author  = {Li, Hongmin and Liu, Hanchao and Ji, Xiangyang and Li, Guoqi
+              and Shi, Luping},
+  title   = {CIFAR10-DVS: An Event-Stream Dataset for Object Classification},
+  journal = {Frontiers in Neuroscience},
+  volume  = {11},
+  pages   = {309},
+  year    = {2017}
+}
+
+@article{orchard2015converting,
+  author  = {Orchard, Garrick and Jayawant, Ajinkya and Cohen, Gregory K.
+              and Thakor, Nitish},
+  title   = {Converting Static Image Datasets to Spiking Neuromorphic
+             Datasets Using Saccades},
+  journal = {Frontiers in Neuroscience},
+  volume  = {9},
+  pages   = {437},
+  year    = {2015},
+  doi     = {10.3389/fnins.2015.00437}
+}
+
+@techreport{krizhevsky2009learning,
+  author      = {Krizhevsky, Alex},
+  title       = {Learning Multiple Layers of Features from Tiny Images},
+  institution = {University of Toronto, Department of Computer Science},
+  year        = {2009}
+}
+
+%% ============================================================
+%% H. 측면 억제 (동기 서술 전용)
+%% ============================================================
+
+@inproceedings{cheng2020lisnn,
+  author    = {Cheng, Xiang and Hao, Yunzhe and Xu, Jiaming and Xu, Bo},
+  title     = {LISNN: Improving Spiking Neural Networks with Lateral
+               Interactions for Robust Object Recognition},
+  booktitle = {Proceedings of the Twenty-Ninth International Joint
+               Conference on Artificial Intelligence (IJCAI)},
+  pages     = {1519--1525},
+  year      = {2020}
+}
+
+%% ============================================================
+%% I. 손실항 가중치 자동 설정 계보 (SNN 밖)
+%% ============================================================
+
+@inproceedings{chen2018gradnorm,
+  author    = {Chen, Zhao and Badrinarayanan, Vijay and Lee, Chen-Yu
+               and Rabinovich, Andrew},
+  title     = {GradNorm: Gradient Normalization for Adaptive Loss
+               Balancing in Deep Multitask Networks},
+  booktitle = {Proceedings of the 35th International Conference on
+               Machine Learning (ICML)},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {80},
+  pages     = {794--803},
+  year      = {2018},
+  note      = {arXiv:1711.02257}
+}
+
+@inproceedings{kendall2018multitask,
+  author    = {Kendall, Alex and Gal, Yarin and Cipolla, Roberto},
+  title     = {Multi-Task Learning Using Uncertainty to Weigh Losses for
+               Scene Geometry and Semantics},
+  booktitle = {Proceedings of the IEEE Conference on Computer Vision and
+               Pattern Recognition (CVPR)},
+  pages     = {7482--7491},
+  year      = {2018}
+}
+
+@inproceedings{franke2024improving,
+  author    = {Franke, J{\"o}rg K. H. and Hefenbrock, Michael and Koehler, Gregor
+               and Hutter, Frank},
+  title     = {Improving Deep Learning Optimization through Constrained
+               Parameter Regularization},
+  booktitle = {Advances in Neural Information Processing Systems 37 (NeurIPS 2024)},
+  year      = {2024},
+  note      = {arXiv:2311.09058. 증강 라그랑지안(augmented Lagrangian)
+               방식으로 파라미터 행렬별 상한을 학습.}
+}
