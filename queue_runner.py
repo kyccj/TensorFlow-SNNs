@@ -55,12 +55,14 @@ def claim(path, prio_first=True):
 
 
 def finish(path, idx, status):
+    """queue_claim.do_finish 와 같은 규약 — done 이면 돌린 서버를 남긴다."""
     with open(path, 'r+') as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         try:
             lines = f.read().split('\n')
             c = lines[idx].split('\t')
-            c[0] = status
+            who = c[0][4:] if c[0].startswith('run:') else ''
+            c[0] = f'{status}:{who}' if who and status == 'done' else status
             lines[idx] = '\t'.join(c)
             f.seek(0); f.write('\n'.join(lines)); f.truncate()
         finally:

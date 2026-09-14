@@ -273,6 +273,12 @@ def run_one(gpu, combo, method, knob, seed, tag, sweep_dir, epochs=0, fix_seed=F
     # 남겨 collect_paper.py 등 _paper/<tag>/train.log 를 읽는 도구가 그대로 동작하게 한다.
     store_dir = os.path.join(STORE, tag)
     os.makedirs(store_dir, exist_ok=True)
+    # 어느 서버에서 돌았는지 런 옆에 남긴다. canus(…138) 와 sejong(…23) 은 TF·numpy·
+    # CUDA 버전이 달라서, 결과를 합칠 때 서버를 공변량으로 넣어야 한다.
+    with open(os.path.join(store_dir, 'host.txt'), 'w') as hf:
+        import socket as _s
+        hf.write(f'{_s.gethostname()}\t{_s.gethostbyname(_s.gethostname())}\t'
+                 f'gpu{gpu}\t{time.strftime("%Y-%m-%d %H:%M")}\n')
     log_path = os.path.join(store_dir, 'train.log')
     link = os.path.join(d, 'train.log')
     if os.path.islink(link) or os.path.exists(link):
@@ -282,6 +288,7 @@ def run_one(gpu, combo, method, knob, seed, tag, sweep_dir, epochs=0, fix_seed=F
         rc = subprocess.Popen([PYTHON, os.path.join(d, 'main_sweep.py')], cwd=PROJECT_ROOT,
                               stdout=lf, stderr=subprocess.STDOUT, env=env).wait()
     print(f"[{time.strftime('%m-%d %H:%M')}] [GPU {gpu}] DONE  {tag} rc={rc}", flush=True)
+    return rc
 
 
 def free_gpus(allowed, exclude, max_mib=200):
@@ -341,6 +348,7 @@ def main():
         return
 
     pending, busy, threads = list(jobs), set(), []
+    failed = []
     print(f'--- {a.combo} / {a.method} / knob={a.knob} : {len(pending)} runs '
           f'(GPU {sorted(allowed)}) ---', flush=True)
     while pending:
@@ -352,10 +360,14 @@ def main():
 
             def worker(g=g, combo=combo, method=method, knob=knob, seed=seed, tag=tag):
                 try:
-                    run_one(g, combo, method, knob, seed, tag, sweep_dir, a.epochs, a.fix_seed)
+                    rc = run_one(g, combo, method, knob, seed, tag, sweep_dir,
+                                 a.epochs, a.fix_seed)
+                    if rc:
+                        failed.append((tag, rc))
                 except Exception as e:              # 한 job 이 죽어도 나머지는 계속
                     print(f"[{time.strftime('%m-%d %H:%M')}] [GPU {g}] FAIL {tag}: {e}",
                           flush=True)
+                    failed.append((tag, 'exception'))
                 finally:
                     busy.discard(g)
 
@@ -367,6 +379,13 @@ def main():
             time.sleep(60)
     for t in threads:
         t.join()
+    if failed:
+        # 학습이 죽었는데 0 을 반환하면 큐 실행기가 'done' 으로 표시한다.
+        # sejong 에서 Keras 2.11 이 체크포인트 디렉토리를 안 만들어 6런이 9분 만에
+        # done 으로 찍혔다 (26-09-14). 실패는 반드시 종료코드로 올린다.
+        for tag, rc in failed:
+            print(f'실패: {tag} rc={rc}', flush=True)
+        sys.exit(1)
     print('--- 전부 완료 ---', flush=True)
 
 

@@ -49,9 +49,15 @@ def do_claim(path, tag):
 
 
 def do_finish(path, idx, status):
+    """결과를 적되 **어느 서버가 돌렸는지 남긴다** (done:sejong:gpu5).
+
+    canus 와 sejong 의 환경이 다르다 (TF 2.12.1/2.11.0, numpy 1.23.5/1.26.4,
+    CUDA 11.8/11.2). 조건별로 어느 서버에서 몇 개가 돌았는지 모르면 서버 효과와
+    방법 효과를 분리할 수 없다. 상태 줄에 출처를 보존한다."""
     def fn(lines):
         c = lines[idx].split('\t')
-        c[0] = status
+        who = c[0][4:] if c[0].startswith('run:') else ''
+        c[0] = f'{status}:{who}' if who and status in ('done',) else status
         lines[idx] = '\t'.join(c)
         return True
     return _edit(path, fn)
