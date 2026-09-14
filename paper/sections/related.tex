@@ -24,8 +24,8 @@ objective --- reduce total spike count --- with no preference over
 only neurons that barely cross threshold, leaving strong and already-silent
 neurons untouched, a byproduct rather than a design choice. They also
 hand-set their strength coefficient, varying only what is penalised. Our
-experiments show \emph{what} is penalised does not change the accuracy-spike
-curve, and open a different axis: internal state at a matched point on that
+earlier exploration suggests \emph{what} is penalised does not change the accuracy-spike
+curve (observed on VGG-16/CIFAR-10; not reported here), and opens a different axis: internal state at a matched point on that
 curve.
 
 \subsection{Pruning and activity-based sparsification}
@@ -37,10 +37,7 @@ effect, activity-based pruning
 and that existing activity regularisation has structural limitations
 \cite{bu2025activity}; we concede both as confirmation of prior work, not our
 contribution (Section~\ref{sec:intro} gives the neuron-count evidence). We
-add three things instead: equivalence across 19 per-neuron weighting designs,
-a difference in which neurons stay active at a matched spike budget, and a
-strength coefficient not hand-set per dataset-architecture pair, unlike
-Activity Pruning's own per-dataset values (Section~\ref{sec:intro}).
+add three things instead: the neuron-usage difference at a matched spike budget; the observation that surviving neurons fire 2.3–2.5 times out of T=4 regardless of method; and setting the regularisation strength by a ratio against the task loss rather than by hand.
 
 \subsection{Balancing auxiliary loss terms}
 Outside SNNs, a separate line sets an auxiliary loss weight automatically

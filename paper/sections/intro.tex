@@ -49,15 +49,7 @@ penalty (ours vs.\ the $L_2$ penalty: $t=10.5$, $p=8.4{\times}10^{-7}$). Spike r
 is not one mechanism: the layer-wise $L_2$ penalty weakens every neuron a little, while
 our regulariser silences some neurons outright.
 
-% GATE: G5
-So what does using fewer neurons change in practice? We answer this not with the
-fraction of neurons quiet on a given image, but with the fraction of neurons that never
-fire across the entire test set. Over all 10,000 test images, the permanently silent
-fraction is __G5_SILENT_RATIO__.\footnote{Measured with
-\texttt{extract\_neuron\_spikes.py --split test --n 10000}.} The silence fractions
-reported elsewhere in this paper are measured on 100-image batches and cannot be
-read as ``permanently dead neurons'' --- conflating the two would overstate the
-pruning benefit.
+% GATE: G5 -- if the whole-test-set silent-neuron measurement is run, the paragraph stating that fraction belongs here.
 
 % ALT (G7): replace the G5 paragraph above with this one once Speck measurements exist
 % (drop the leading "% " on each line, and drop the G5 paragraph and its GATE comment).
