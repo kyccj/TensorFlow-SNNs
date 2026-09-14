@@ -1,3 +1,82 @@
 \section{Introduction}
 \label{sec:intro}
-% TODO: Task 9
+
+The efficiency argument for spiking neural networks (SNNs) rests on an unverified
+premise: that they fire sparsely. Models trained for accuracy alone are rarely audited
+for how much they actually fire. Under a standard direct-training setup --- ResNet-19 on
+CIFAR-10, $T=4$ --- training with no spike regularisation converges to 486,656 spikes
+(n=5) \cite{wu2018spatio,neftci2019surrogate,zheng2021going}.
+
+Half of that firing turns out to be unnecessary. Under the same setup, cutting spikes by
+51.5\% leaves accuracy unchanged: the unregularised baseline reaches
+$96.654 \pm 0.065$ at 486,656 spikes (n=5), while our regulariser at
+$\rho{=}3{\times}10^{-3}$ reaches $96.650 \pm 0.168$ at 235,802 spikes (n=4), a 51.5\%
+reduction. The gap between the two, $-0.004$ percentage points, is one sixteenth of the
+baseline's own standard deviation, and it sits above the lossless line (baseline mean
+minus two standard deviations, 96.524). Directly trained SNNs therefore converge to an
+over-firing state.
+
+Regularisers that penalise the total spike count date back to 2016, and two problems
+have persisted since. First, their strength has to be hand-tuned: Sorbaro et al.\ fix
+their coefficient at $\alpha=1/S_0^2$, a constant set before training begins, and
+instead sweep the absolute SynOps target $S_0$ by hand across 30 models
+\cite{sorbaro2020optimizing}. Activity Pruning (NeurIPS 2025) hardcodes its strength
+coefficients into per-dataset configuration files; moving from its CIFAR-10 setting
+($10^{-3}$/$10^{-4}$) to its ImageNet-100 setting ($10^{-4}$/$10^{-2}$) moves one
+coefficient $100\times$ and the other $10\times$, in opposite directions
+\cite{bu2025activity}. Both cases show the same failure: strength must be re-tuned by
+hand for every dataset and every target. Second, reporting stays at the level of
+simulated proxies --- Sorbaro et al.\ come from the group that manufactures the Speck
+sensor, yet report only sinabs simulation results, never a hardware measurement
+\cite{neil2016learning,sorbaro2020optimizing,pellegrini2021low,meda2022improving}.
+
+Curves are not the whole story. We vary the per-neuron weighting inside the spike-count
+penalty across 19 designs, and every one lands on the same accuracy-spike curve --- but
+the same point on that curve does not mean the same internal state. The observation that
+spike reduction is mostly neuron silencing was made first by Activity Pruning
+(NeurIPS 2025) \cite{bu2025activity}; what we add is that \emph{which} neurons are
+silenced differs by method. Regressing log active-neuron count on log spike count and
+method (coefficient 0.869, $t=-21.5$, $n=21$) shows that at matched spike budgets, our
+regulariser uses 13.1\% fewer active neurons. The nearest spike-matched pair makes the
+same point directly, though it is a separate, single-pair measurement and not what the
+regression explains: at 193,129 spikes our regulariser uses 131,641 neurons, against
+193,083 spikes and 155,669 neurons for the layer-wise $L_2$ penalty --- a 15.4\%
+difference in neuron count at an almost identical spike count. Per-neuron firing rate
+confirms the mechanism is not uniform: 1.621 for the unregularised baseline, 1.479 for
+our regulariser, 1.370 for the softmax weighting, and 1.284 for the layer-wise $L_2$
+penalty (ours vs.\ the $L_2$ penalty: $t=10.5$, $p=8.4{\times}10^{-7}$). Spike reduction
+is not one mechanism: the layer-wise $L_2$ penalty weakens every neuron a little, while
+our regulariser silences some neurons outright.
+
+% GATE: G5
+So what does using fewer neurons change in practice? We answer this not with the
+fraction of neurons quiet on a given image, but with the fraction of neurons that never
+fire across the entire test set. Over all 10,000 test images, the permanently silent
+fraction is __G5_SILENT_RATIO__ (filled by
+\texttt{python extract\_neuron\_spikes.py --split test --n 10000}). The silence
+fractions reported elsewhere in this paper are measured on 100-image batches and cannot
+be read as ``permanently dead neurons'' --- conflating the two would overstate the
+pruning benefit.
+
+% ALT (G7): replace the G5 paragraph above with this one once Speck measurements exist
+% (drop the leading "% " on each line, and drop the G5 paragraph and its GATE comment).
+% Using fewer neurons should translate into a measurable gain on real neuromorphic
+% hardware. [Speck measurement --- fill after G7] \cite{yao2024spikebased,horowitz2014computing}
+
+Taken together, this paper makes the following contributions.
+\begin{itemize}\itemsep0pt
+  \item Nineteen weighting designs for the spike-count penalty all converge to the same
+  accuracy-spike curve, but the same point on that curve does not imply the same
+  internal state: at a matched spike budget, the active-neuron count differs by 13.1\%.
+  % GATE: G4
+  \item We set the regularisation strength through a single dimensionless ratio between
+  the task loss and the regularisation term, needing neither an absolute SynOps target
+  nor prior knowledge of the spike budget. This tentatively distinguishes our approach
+  from Sorbaro et al.'s static $1/S_0^2$ and Activity Pruning's hand-set coefficients,
+  pending a control that applies the same ratio controller to the layer-wise $L_2$
+  penalty.
+\end{itemize}
+% GATE: G7 - move this item inside the itemize above once Speck measurements exist
+% (drop the leading "% ").
+%   \item We validate this neuron-usage gain on Speck neuromorphic hardware.
+%   \cite{yao2024spikebased,horowitz2014computing}
