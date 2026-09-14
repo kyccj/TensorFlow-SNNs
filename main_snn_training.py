@@ -56,7 +56,7 @@ filepath_save, filepath_load, config_name = lib_snn.utils.set_file_path()
 # Keras 2.12 의 ModelCheckpoint 는 저장 경로의 부모 디렉토리를 만들어 주지만
 # 2.11 은 만들지 않아 첫 저장에서 FileNotFoundError 로 죽는다 (sejong, 26-09-14).
 # 버전에 의존하지 않도록 여기서 만든다.
-if conf.mode == 'train' and filepath_save:
+if config.flags.mode == 'train' and filepath_save:
     os.makedirs(filepath_save, exist_ok=True)
 
 ########################################
