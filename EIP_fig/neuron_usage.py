@@ -4,8 +4,24 @@ reg_neuron_detail.csv 의 dead_neuron_ratio 와 reg_detail.csv 의 spike_count �
 '활성 뉴런 수'와 '뉴런당 발화'를 만든다. 두 CSV 모두 최종 에폭 값을 쓴다.
 주의 - dead_neuron_ratio 는 배치 100장 기준이다. 방법 간 비율 비교에는 유효하지만
 절대값을 '영구히 죽은 뉴런'으로 읽으면 안 된다.
+
+**프로토콜 주의 (2026-09-14 fix round 1)** — 이 스크립트의 스파이크 축(S)은
+`reg_detail.csv` 의 **학습 모드** spike_count 합이다. `dead_neuron_ratio` 가 이
+CSV 세트에만 있어서 활성 뉴런(A)과 같은 측정 경로를 쓰려면 어쩔 수 없다. Table 1 등
+논문 표의 스파이크 수는 **eval/test 모드** `s_count`(`train.log`)이고 값이 다르다
+(같은 런에서 학습 모드가 eval 모드보다 몇 % 높게 나오는 경향, 아래 오프셋 로그 참조).
+이 스크립트가 내는 S 값을 T1 의 스파이크 수와 같은 것으로 읽지 않는다 — §4.5 본문과
+F4 캡션에 두 프로토콜이 다르다는 것과 실측 오프셋을 명시한다 (spec §9-G).
+
+**사전 등록 필터 (2026-09-14 fix round 1)** — 이 분석에 들어가는 모든 런에
+사전 등록 규칙 1(310 에폭 완주)·2(S30/S1 ≥ 0.19) 를 적용한다. `collect_paper.py`
+의 판정 로직을 그대로 재사용한다(재구현하지 않는다) — 스토리지 기준 런 이름(hdd)을
+`train.log` 가 있는 로컬 디렉토리(`_paper/<name>` 또는 `_paper_bad_seeded/<name>`)에
+대응시켜 `collect_paper.collect()` 를 돌린다. **규칙 3(조건당 상위 4개)은 적용하지
+않는다** — 그것은 보고용 표의 n 을 표준화하는 규칙이지, 회귀에서 유효한 점을
+버릴 이유가 아니다.
 """
-import csv, os, re, math, glob
+import csv, os, re, math, glob, sys
 import numpy as np
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -16,6 +32,35 @@ plt.rcParams['axes.unicode_minus'] = False
 
 STORE = '/media/hdd1/kyccj/EIP/paper'
 OUT = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(OUT)
+sys.path.insert(0, REPO_ROOT)
+import collect_paper as cp
+
+LOCAL_ROOTS = ('_paper', '_paper_bad_seeded')
+
+
+def find_local_run_dir(name):
+    """hdd 저장소 런 이름(name)에 대응하는, train.log 가 있는 로컬 디렉토리를 찾는다."""
+    for root in LOCAL_ROOTS:
+        d = os.path.join(REPO_ROOT, root, name)
+        if os.path.exists(os.path.join(d, 'train.log')):
+            return d
+    return None
+
+
+def filter_reason(name):
+    """사전 등록 규칙 1(완주)·2(S30/S1>=0.19) 로 판정한다.
+
+    반환: None(통과) 또는 배제 사유 문자열. 로컬 대응 디렉토리를 못 찾으면
+    완주·S30/S1 을 검증할 수 없다는 뜻이므로 안전하게 배제한다(규칙을 못
+    지킨 런을 조용히 통과시키지 않는다)."""
+    d = find_local_run_dir(name)
+    if d is None:
+        return 'train.log 로컬 대응 없음 — 완주·S30/S1 검증 불가'
+    rec = cp.collect(d)
+    if not rec['exclude']:
+        return None
+    return rec['exclude_reason']
 
 # ResNet19: 뉴런 층별 개수 (H*W*C, 이미지 1장 기준)
 NEUR = {'conv1_conv_n': 32*32*128}
@@ -62,20 +107,34 @@ METH = {'base': ('규제 없음', '#888888', 'o'),
         'sm':   ('1−softmax', '#8e44ad', '^')}
 
 runs = {}
+dropped = []
 for d in sorted(glob.glob(STORE + '/r19c10-*')):
     n = os.path.basename(d)
     m = re.match(r'^r19c10-([a-z_0-9]+?)-', n)
     if not m or m.group(1) not in METH:
         continue
     r = load(n)
-    if r:
-        runs.setdefault(m.group(1), []).append(r)
+    if not r:
+        continue
+    reason = filter_reason(n)
+    if reason:
+        dropped.append((n, reason))
+        continue
+    runs.setdefault(m.group(1), []).append(r)
 for n in ('basemore-base_r19_c10_run3',):
     r = load(n)
-    if r:
-        runs.setdefault('base', []).append(r)
+    if not r:
+        continue
+    reason = filter_reason(n)
+    if reason:
+        dropped.append((n, reason))
+        continue
+    runs.setdefault('base', []).append(r)
 
 print({k: len(v) for k, v in runs.items()})
+print(f'사전 등록 필터(규칙 1·2)로 배제된 런 {len(dropped)}개:')
+for n, reason in dropped:
+    print(f'  {n}: {reason}')
 
 fig = plt.figure(figsize=(13, 9))
 gs = fig.add_gridspec(2, 2, hspace=0.32, wspace=0.24)

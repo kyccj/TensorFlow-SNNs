@@ -219,8 +219,11 @@ underneath a matched point on the curve.
 \paragraph{The same spike budget, a different number of active neurons.}
 On ResNet-19/CIFAR-10, at matched spike counts, the proposed regulariser
 uses fewer active neurons than Plain $L_2$. Across the full set of runs
-with per-neuron logging, a regression of log active neurons on log spike
-count and method gives a coefficient of $0.869$ ($t=-21.5$, $n=21$): at a
+with per-neuron logging that pass the pre-registered completion and
+$S_{30}/S_1 \geq 0.19$ filter (spec \S 12-1, rule 3's top-4 cap is not
+applied here -- it standardises a reporting table's $n$, not a
+regression's), a regression of log active neurons on log spike count and
+method gives a coefficient of $0.869$ ($t=-21.5$, $n=21$): at a
 given spike count, the proposed regulariser activates $13.1\%$ fewer
 neurons than Plain $L_2$. This is a fitted relationship over the whole
 sample, not a statement about any one pair of runs. Separately, the
@@ -229,6 +232,16 @@ closest-landing pair we have -- Plain $L_2$ at 193,083 spikes with
 131,641 active neurons, a $15.4\%$ difference -- illustrates the same
 direction at a single matched point, but the regression is the evidence
 for the general claim; the pair is not offered as proof of it.
+\textbf{This spike count is measured on a different protocol than
+Table~\ref{tab:t1_main}'s.} The per-neuron logging this analysis needs
+only exists in training-mode logs, so both the 193K figures above and
+Figure~\ref{fig:f4_active}'s axis are training-mode spike counts, not the
+eval/test-mode counts used everywhere else in this paper (spec \S 9-G);
+for the two runs behind the closest-landing pair, the training-mode count
+is $2.6\%$ and $2.7\%$ higher than that same run's eval-mode count
+(188,208 and 187,911 eval vs.\ 193,129 and 193,083 training). Read the
+193K figures in this section as internally consistent with each other,
+not as directly comparable to Table~\ref{tab:t1_main}'s $\approx$192K.
 Figure~\ref{fig:f4_active} plots this relationship across the full spike
 range: the two fitted lines run parallel rather than crossing, so the gap
 in active-neuron count is not an artefact of the particular budget these
@@ -242,7 +255,13 @@ unregularised baseline, Plain $L_2$, 1-softmax, and the proposed
 regulariser. Lines are a common-slope log-log fit (Ours vs.\ Plain $L_2$);
 both axes are raw counts. The two fitted lines are parallel across the
 whole spike range shown, not only at the single closest-landing pair
-quoted in the text.}
+quoted in the text. The spike axis is the training-mode count, not the
+eval/test-mode count Table~\ref{tab:t1_main} uses, and runs by $2$--$3\%$
+higher (spec \S 9-G). Active-neuron counts are computed from
+\texttt{dead\_neuron\_ratio} measured on a 100-image batch, not a
+permanently-silent-neuron count; the neuron-count gap is an early- and
+middle-layer phenomenon and the three conditions are not distinguishable
+from conv3\_block2 onward.}
 \label{fig:f4_active}
 \end{figure*}
 
@@ -282,11 +301,15 @@ is what produces it.
 \includegraphics[width=\linewidth]{figures/f2_f3_gini_top10.pdf}
 \caption{Per-layer spike concentration, ResNet-19/CIFAR-10, unregularised
 baseline vs.\ Plain $L_2$ vs.\ the proposed regulariser, at the closest-landing
-spike pair (193K, quoted in the text). Left: Gini coefficient of per-neuron
-spike counts. Right: share of a layer's spikes carried by its top 10\% of
-neurons. In both panels the three conditions separate in the early and
-middle layers and converge from conv3\_block2 onward -- we do not claim
-concentration in the layers where the lines overlap.}
+spike pair (193K training-mode, quoted in the text -- not directly
+comparable to Table~\ref{tab:t1_main}'s eval-mode counts, spec \S 9-G).
+Left: Gini coefficient of per-neuron spike counts. Right: share of a
+layer's spikes carried by its top 10\% of neurons. In both panels the
+three conditions separate in the early and middle layers and converge
+from conv3\_block2 onward -- we do not claim concentration in the layers
+where the lines overlap. Both panels are computed from
+\texttt{dead\_neuron\_ratio} measured on a 100-image batch, not a
+permanently-silent-neuron count.}
 \label{fig:f2f3}
 \end{figure*}
 
