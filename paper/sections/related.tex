@@ -13,63 +13,48 @@ normalisation and $T{=}4$ directly from this line and study what happens to
 the spikes it produces after training.
 
 \subsection{Spike-count regularisation}
-A separate line adds a spike-count term to the training loss to push firing
-down \cite{neil2016learning,sorbaro2020optimizing,pellegrini2021low,meda2022improving,sakemi2023sparse}.
-This is the literature basis for our comparison arm: the layer-wise $L_2$
-penalty we compare against throughout this paper is this family's
-representative case, with primary support from Neil et al., Sorbaro et al.,
-and Pellegrini et al.\ \cite{neil2016learning,sorbaro2020optimizing,pellegrini2021low}.
-Sorbaro et al.\ fix a static $\alpha=1/S_0^2$ before training and instead
-sweep an absolute SynOps target by hand across 30 models
-\cite{sorbaro2020optimizing}. All of these methods share one objective ---
-reduce total spike count --- and express no preference over \emph{which}
-neurons fire less; applied as a layer-wise $L_2$ penalty, this makes neurons
-that barely cross threshold stop firing while leaving strongly-firing and
-already-silent neurons untouched, a structural byproduct rather than a design
-choice. They also hand-set their strength coefficient and vary only what is
-penalised (total count vs.\ SynOps). Our experiments show that \emph{what} is
-penalised does not change the resulting accuracy-spike curve, and open a
-different axis instead: at the same point on that curve, the internal state
-differs.
+A separate line adds a spike-count term to the training loss to reduce firing
+\cite{neil2016learning,sorbaro2020optimizing,pellegrini2021low,meda2022improving,sakemi2023sparse};
+the layer-wise $L_2$ penalty in our comparison arm is this family's
+representative case, primarily
+\cite{neil2016learning,sorbaro2020optimizing,pellegrini2021low} (Sorbaro et
+al.'s coefficient and sweep are in Section~\ref{sec:intro}). All share one
+objective --- reduce total spike count --- with no preference over
+\emph{which} neurons fire less; as a layer-wise $L_2$ penalty, this silences
+only neurons that barely cross threshold, leaving strong and already-silent
+neurons untouched, a byproduct rather than a design choice. They also
+hand-set their strength coefficient, varying only what is penalised. Our
+experiments show \emph{what} is penalised does not change the accuracy-spike
+curve, and open a different axis: internal state at a matched point on that
+curve.
 
 \subsection{Pruning and activity-based sparsification}
-We address a case of anticipation directly, because our own mechanistic
-analysis independently arrived at the same framing --- that this is, in
+Our own mechanistic analysis independently arrived at a framing this
+literature already anticipates: that spike-count regularisation is, in
 effect, activity-based pruning
 \cite{bu2025activity,li2024spiking,yao2023inherent}. Activity Pruning
-(NeurIPS 2025) adds a per-layer spike count to the training loss during
-training itself, not as a post-hoc prune-and-retrain step, and adapts the
-firing threshold from membrane potential; it already states that spike
-reduction is mostly neuron silencing and that existing activity
-regularisation has structural limitations \cite{bu2025activity}. We concede
-both points: they are a confirmation of a prior observation rather than our
-contribution, and Section~\ref{sec:intro} reports the neuron-count evidence
-behind it. What we add is threefold: (1) equivalence across 19 per-neuron
-weighting designs for the spike-count penalty, (2) a difference in which
-neurons remain active at a matched spike budget, and (3) a strength
-coefficient that, unlike Activity Pruning's own per-dataset configuration
-values (Section~\ref{sec:intro}), is not hand-set for every new
-dataset-architecture combination.
+(NeurIPS 2025) already states that spike reduction is mostly neuron silencing
+and that existing activity regularisation has structural limitations
+\cite{bu2025activity}; we concede both as confirmation of prior work, not our
+contribution (Section~\ref{sec:intro} gives the neuron-count evidence). We
+add three things instead: equivalence across 19 per-neuron weighting designs,
+a difference in which neurons stay active at a matched spike budget, and a
+strength coefficient not hand-set per dataset-architecture pair, unlike
+Activity Pruning's own per-dataset values (Section~\ref{sec:intro}).
 
 \subsection{Balancing auxiliary loss terms}
-Outside the SNN literature, a separate line automatically sets the weight of
-an auxiliary loss term
-\cite{chen2018gradnorm,kendall2018multitask,franke2024improving}: GradNorm
-learns a per-task weight at every step via gradient-norm equalisation
-(requiring an added parameter) \cite{chen2018gradnorm}; Kendall et al.\ learn
-it as a homoscedastic-uncertainty parameter (requiring a probabilistic model)
-\cite{kendall2018multitask}; Franke et al.\ enforce a per-parameter-matrix
-upper bound via an augmented-Lagrangian multiplier (requiring that bound be
-specified) \cite{franke2024improving}. All three balance several task losses
-and require either a learned parameter or a pre-specified target; we instead
-fix a single ratio between the task loss and the regularisation term.
-% GATE: G4 -- the following sentence depends on the l2 + loss-ratio control
-% run (not yet executed as of 2026-09-14). If G4 remains unmet, relocate this
-% entire subsection out of Section 2 into the Discussion section instead of
+Outside SNNs, a separate line sets an auxiliary loss weight automatically
+\cite{chen2018gradnorm,kendall2018multitask,franke2024improving} --- via
+gradient-norm equalisation, a learned homoscedastic-uncertainty parameter, or
+an augmented-Lagrangian bound --- each requiring a learned parameter or a
+pre-specified target.
+% GATE: G4 -- [내부용, 본문 반입 금지] l2 + loss-ratio control run has not been
+% executed as of 2026-09-14. If G4 remains unmet, relocate this entire
+% subsection out of Section 2 into the Discussion section instead of
 % publishing it here.
-This tentatively distinguishes our approach from Sorbaro et al.'s static
-$1/S_0^2$ and Activity Pruning's hand-set coefficients, pending a control that
-applies the same ratio controller to the layer-wise $L_2$ penalty.
+None offers a coefficient needing neither an absolute target nor advance
+knowledge of the spike budget; Section~\ref{sec:intro} states, provisionally,
+what closes that gap.
 
 \subsection{Energy accounting and neuromorphic deployment}
 Reporting efficiency through a SynOps$\times$pJ accounting scheme is standard
