@@ -106,7 +106,9 @@ def METHODS(name, knob):
 # 실험 산출물(체크포인트·CSV·train.log)은 로컬 SSD 가 아니라 HDD 에 쌓는다.
 # 루트 디렉토리가 652개까지 늘고 SSD 가 84% 차서 26-09-14 에 옮겼다.
 # paper/ 는 논문 후보, archive/ 는 과거 실험 라인.
-STORE = '/media/hdd1/kyccj/EIP/paper'
+# 서버마다 저장 위치가 다를 수 있어 환경변수로 덮어쓸 수 있게 둔다.
+#   EIP_STORE=/data/kyccj/EIP/paper python run_paper.py ...
+STORE = os.environ.get('EIP_STORE', '/media/hdd1/kyccj/EIP/paper')
 
 RE_NAME = re.compile(r"^conf\.exp_set_name\s*=\s*'[^']*'", re.M)
 RE_GPU = re.compile(r'^os\.environ\["CUDA_VISIBLE_DEVICES"\]\s*=\s*"\d+"', re.M)
