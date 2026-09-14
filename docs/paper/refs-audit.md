@@ -24,7 +24,7 @@ publisher 페이지·arXiv listing·DBLP·Semantic Scholar 를 fetch 하여 수�
 | `neil2016learning` | 확인 | ZORA UZH 저장소(취리히대) 서지 레코드로 저자·venue(ACM SAC 2016) 확인 |
 | `sorbaro2020optimizing` | 확인 | Task 1(novelty-gate.md)이 원문 PDF 를 직접 읽고 확정한 값(Frontiers 14:662, doi:10.3389/fnins.2020.00662)을 그대로 사용 |
 | `pellegrini2021low` | 확인 | IEEE SLT 2021 자료(IEEE Resource Center) + arXiv:2011.06846 로 저자·페이지(97–103) 확인 |
-| `perez2022surrogate` | 확인, **주의 필요** | arXiv:2201.02538 abstract 페이지에서 단독 저자 **Nandan Meda**(학사 학위논문)로 확인됨. 브리프가 지정한 키 `perez2022surrogate` 는 이 저자와 성이 다르다 — lit-bcd.md 에도 저자명이 없었고, 브리프 작성 시 키가 잘못 붙은 것으로 보인다. **키는 Task 4/9/10 과의 안정성을 위해 브리프 지정값을 그대로 두었고, bib 항목의 author 필드에는 실제 저자 Meda 를 넣었다.** 개요·본문 작성자는 이 항목을 인용할 때 실제 저자명(Meda)을 쓰고 키만 `perez2022surrogate` 를 유지할 것 |
+| `meda2022improving` | 확인 | arXiv:2201.02538 abstract 페이지에서 단독 저자 **Nandan Meda**(학사 학위논문)로 확인됨. 처음 배정된 키가 저자 성과 불일치해 저자 성에 맞춰 개명함(2026-09-14 fix round 1 — Task 4/9/10 착수 전이라 하위 참조 영향 없음). **보조(secondary) 인용으로만 쓸 것** — 학사 학위논문이라 동료심사를 거치지 않았다. 손실항 규제/정규화라는 같은 주제의 1차 문헌 근거는 `neil2016learning`(ACM SAC), `sorbaro2020optimizing`(Frontiers), `pellegrini2021low`(IEEE SLT) 세 편이며, plain-L2 계열 baseline 을 뒷받침할 때는 이 세 편을 우선 인용하고 `meda2022improving` 은 보완 각주로만 붙인다 |
 | `sakemi2023sparse` | 확인 | Nature 저널 페이지(nature.com/articles/s41598-023-50201-5) + PMC 사본으로 저자·권·article no.(13:22897) 확인 |
 
 ## C. 직접 학습 기초
@@ -52,7 +52,7 @@ publisher 페이지·arXiv listing·DBLP·Semantic Scholar 를 fetch 하여 수�
 | 키 | 상태 | 확인 방법 |
 |---|---|---|
 | `horowitz2014computing` | 확인 (브리프 Step 2 공백 항목) | Scientific Research Publishing 서지 레코드로 **pp.10–14**, San Francisco 2014-02-09~13 확인 |
-| `lemaire2022analytical` | 확인 | arXiv:2210.13107 + Springer 챕터 링크(ICONIP 2022)로 저자 6인·venue 확인. 브리프는 arXiv 만 언급했으나 ICONIP 2022 accepted 사실을 추가로 확인해 booktitle 에 반영 |
+| `lemaire2022analytical` | 확인 | arXiv:2210.13107 + Springer 챕터 링크(ICONIP 2022, LNCS 13623, doi:10.1007/978-3-031-30105-6_48)로 저자 6인·venue·DOI 확인. 브리프는 arXiv 만 언급했으나 ICONIP 2022 accepted 사실과 Springer DOI/series/volume 을 추가로 확인해 `refs.bib` 에 반영(2026-09-14 fix round 1) |
 
 ## F. 뉴로모픽 하드웨어
 
@@ -89,7 +89,9 @@ publisher 페이지·arXiv listing·DBLP·Semantic Scholar 를 fetch 하여 수�
   `orchard2015converting`, `yao2023spikedriven`, `yao2024metaspikeformer`) 모두 직접
   재검증하여 채웠다.
 - 재검증 중 **lit-bcd.md 의 오류 1건**을 발견해 고쳤다: `yao2023inherent` 저자 순서.
-- **주의가 필요한 키 1건**: `perez2022surrogate` — 실제 저자(Meda)와 키의 성(perez)이
-  불일치한다. 위 표 참조. 개요·본문(Task 4/9/10) 작성 시 이 각주를 참고할 것.
+- **키 개명 1건 (2026-09-14 fix round 1)**: 저자 성과 불일치하던 원래 키를 `meda2022improving`
+  으로 고쳤다(실제 저자는 Nandan Meda). Task 4/9/10 착수 전이라 하위 영향 없음. 이 항목은
+  학사 학위논문이므로 **보조 인용 전용**이며, plain-L2 baseline 의 1차 근거는
+  `neil2016learning`·`sorbaro2020optimizing`·`pellegrini2021low` 세 편이다. 위 표 참조.
 - `bu2025activity` 는 Task 1 이 이미 확정한 값을 그대로 옮겼으며 이 작업에서 재검증하지
   않았다(OpenReview 본문이 CAPTCHA 로 막혀 있다는 사실도 Task 1 산출물과 동일).
