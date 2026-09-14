@@ -95,3 +95,114 @@ Plain $L_2$ at matched settings is within run-to-run noise for the sample
 sizes collected so far, and we do not assert it as an accuracy advantage.
 
 \input{tables/t1_main}
+
+\subsection{Ablation}
+\label{sec:exp-ablation}
+
+We ablate three components of the proposed regulariser -- the sub-threshold
+term, the single-step application (the spike-count loss applied only at
+$t=T$ instead of at every time step), and the $1{-}$ inversion -- removing
+each in turn while holding the ratio controller's target $\rho$ fixed at
+$4\times10^{-3}$, the same setting used for the proposed regulariser in
+Table~\ref{tab:t1_main}. Table~\ref{tab:t3_ablation} (tier A of the design
+in spec \S 12-4) reports this same-$\rho$ comparison. Removing a component
+changes the active neuron budget that the ratio controller solves against,
+so the strength that $\rho=4\times10^{-3}$ resolves to differs per arm and
+the landing point in spike count moves accordingly -- that movement is
+itself part of the result, not noise to be averaged away. A second,
+spike-matched tier of this table (targeting the $\approx$192K landing point
+of the proposed regulariser) is designed but not executed: it needs 12
+additional runs that have not been approved, and is left as a commented
+block in the table source pending that approval.
+
+Removing the $1{-}$ inversion moves the landing point from 192K spikes
+(Ours) to 437,011 -- within 10\% of the unregularised baseline's 488,619 --
+while $\rho$ is unchanged. We read this as evidence that the inversion is a
+precondition for the method to work at all, not a tunable strength: the gap
+is 2.3$\times$, large enough that no standard-deviation test is needed to
+make the point, and the validation accuracy in that row (96.565\%) looks
+ordinary only if the spike column is ignored. Without the inversion,
+neurons that fall silent contribute a reward of zero and drop out of the
+loss, so the ratio controller sees a much larger neuron budget and
+auto-solves for a correspondingly weaker average strength; the residual
+gradient that remains lands on neurons already well above threshold, where
+the surrogate gradient used here is flat.
+
+Removing the sub-threshold term moves the landing point only modestly (192K
+to 148K) but is the one ablation with a confirmed accuracy cost: $-0.222$
+percentage points against the fitted accuracy-spike curve, at $3.5\sigma$
+and $n=4$ -- the only one of the three components with this statistic
+computed at this sample size. Removing the single-step application moves
+the landing point to 159K; we do not report a curve offset for this arm or
+for the inversion ablation, since neither has been run through the same
+regression at a large enough sample to justify a number, and
+Table~\ref{tab:t3_ablation} shows \texttt{--} rather than a fabricated
+value.
+
+The rightmost column of Table~\ref{tab:t3_ablation} reports spikes per
+active neuron from a separate neuron-level extraction, whose run count
+differs from the accuracy columns and is cited per row; the sub-threshold
+and inversion ablations use $n=3$ and $n=2$ respectively, both below 4, so
+we report the count rather than inventing a standard deviation. Both
+ablations raise spikes-per-neuron above Ours' $1.4790$ ($n=11$) --
+$1.4860$ without the sub-threshold term and $1.5300$ without the inversion
+-- consistent with the broader ordering in which removing regularisation
+strength raises the firing intensity per neuron. Taken together, the three
+columns point to two different effects: the sub-threshold term's
+contribution is on the accuracy axis, and the inversion's contribution is
+on the landing-point (concentration) axis. They are not the same effect,
+and neither result depends on claiming an accuracy advantage over any
+comparison arm.
+
+\input{tables/t3_ablation}
+
+\subsection{Training cost}
+\label{sec:exp-cost}
+
+Table~\ref{tab:t4_cost} reports wall-clock training cost, averaged over 310
+epochs, with a per-run standard deviation of 25--30\,ms ($\approx$4\%).
+Turning on any spike-count regulariser costs 7--33\% over the unregularised
+baseline; the proposed regulariser costs 10\%, less than every other
+regularised comparison arm but not less than the unregularised baseline
+itself. The correct statement is that turning on regularisation costs 10\%,
+which is less than any alternative tested here -- not that the proposed
+regulariser is free, and not only that it is 2.4\% cheaper than Plain
+$L_2$ (695 vs.\ 712 ms/step), which by itself would understate the cost
+relative to the unregularised baseline. Applying the same loss at every
+time step instead of once at $t=T$ (the last row of
+Table~\ref{tab:t4_cost}) costs 33\%, isolating the single-step
+application's contribution to keeping the proposed regulariser's overhead
+low.
+
+\input{tables/t4_cost}
+
+\subsection{Generality}
+\label{sec:exp-generality}
+
+% GATE: G3, G6, G8 -- none of the three gates for this subsection are met
+% as of 2026-09-14 (spec \S 2 B2, C4, C5; \S 8 T8; figures-tables.md T8). We
+% therefore report only the single measurement that exists and do not
+% assert that the CIFAR-10 / ResNet-19 result transfers.
+
+CIFAR-100 currently has one run per condition for the regularised arms
+(baseline has $n=3$). The unregularised baseline reaches $80.720\%$
+validation accuracy at 446,134 spikes; Plain $L_2$ at
+$\lambda=5\times10^{-7}$ ($n=1$) reaches $80.66\%$ at 253,049 spikes; the
+proposed regulariser at $\rho=3\times10^{-3}$ ($n=1$) reaches $80.37\%$ at
+211,350 spikes, a 52.6\% reduction from the baseline. These numbers, in
+Table~\ref{tab:t8_generality} in the appendix, are the only generality
+measurement available: with $n=1$ for the two regularised arms there is no
+error bar, and because their landing points do not match, no
+accuracy-spike curve can be fit for this combination the way it can for
+CIFAR-10 (Table~\ref{tab:t1_main}). Spikformer and CIFAR10-DVS have only
+been swept with an earlier, superseded weighting scheme and have not been
+re-run with the proposed regulariser; SDT-V3 (173M parameters) has the
+regulariser ported to its codebase but training has not started, on a
+separate machine. We report the CIFAR-100 numbers as the only measurement
+that exists, not as evidence that the CIFAR-10 result transfers to another
+dataset or architecture -- that would require $n\geq3$ per condition on
+CIFAR-100 and at least one completed re-run on a second architecture or
+dataset, neither of which is available yet.
+
+% \input{tables/t8_generality}  % GATE: G3,G6,G8 -- drafted, kept out of the
+%   main body until a gate opens; see paper/tables/t8_generality.tex.

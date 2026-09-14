@@ -1,0 +1,21 @@
+\begin{table}
+\centering
+\small
+\begin{tabular}{lccccc}
+\toprule
+Condition & Train loss & Train acc (\%) & Val loss & Val acc (\%) & Spikes \\
+\midrule
+No regularisation & 1.0895 & 92.57 & 1.4343 & 80.98 & 442,696 \\
+No regularisation & 1.0670 & 93.18 & 1.4469 & 80.72 & 441,730 \\
+No regularisation & 1.0572 & 93.42 & 1.4518 & 80.46 & 453,975 \\
+\cmidrule{1-6}
+Mean ($n=3$) & 1.0712 & 93.057 & 1.4443 & 80.720 & 446,134 \\
+\midrule
+Plain $L_2$ ($\lambda=5\times10^{-7}$) & 1.1237 & 92.19 & 1.4664 & 80.66 & 253,049 \\
+\midrule
+Ours ($\rho=3\times10^{-3}$) & 1.0825 & 92.80 & 1.4530 & 80.37 & 211,350 \\
+\bottomrule
+\end{tabular}
+\caption{CIFAR-100 / ResNet-19, the only generality measurement available as of 2026-09-14 (spec \S 2 B2). Baseline has $n=3$; Plain $L_2$ and the proposed regulariser have $n=1$ each, so no error bar is reported for them and no accuracy-spike curve can be fit -- the landing points do not match (211,350 vs.\ 253,049 spikes). \textbf{This table is not evidence of generality}: gate G3 (CIFAR-100, $n\geq3$ per condition) is unmet, and gates G6 (Spikformer / CIFAR10-DVS re-run with the proposed regulariser) and G8 (SDT-V3, 173M) have no data at all (spec \S 2 C4, C5). Kept out of the main body until a gate opens (\texttt{figures-tables.md} T8).}
+\label{tab:t8_generality}
+\end{table}
