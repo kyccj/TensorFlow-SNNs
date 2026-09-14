@@ -60,7 +60,9 @@ uses less energy.
 
 The two codebases behind this paper's results use different surrogate
 gradients. The TensorFlow codebase (ResNet-19, \S\ref{sec:exp-main}--%
-\S\ref{sec:exp-analysis}) uses an asymmetric surrogate (bias 0.8), while the
+\S\ref{sec:exp-analysis}) uses an asymmetric surrogate with bias 0.8 and
+window width $\alpha=0.5$ -- the width is the shared library default and is
+not overridden by the training configuration these runs use -- while the
 QKFormer codebase uses SpikingJelly's \texttt{Sigmoid()}. Porting the
 asymmetric surrogate to the QKFormer codebase has been verified against the
 TensorFlow implementation (maximum absolute difference $0.00\times10^{0}$),

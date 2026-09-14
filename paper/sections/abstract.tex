@@ -1,18 +1,19 @@
 Spiking neural networks are valued for sparse, event-driven computation, but
 published accuracy numbers say little about how many spikes a network
-actually needed to reach them. Trained the usual way -- ResNet-19, CIFAR-10, $T{=}4$, no penalty on
+needed to reach them. Trained the usual way -- ResNet-19, CIFAR-10, $T{=}4$, no penalty on
 firing -- the network settles into 488,619 spikes; adding a per-neuron
 spike-count regulariser during training removes 51.7\% of them with no
 measurable accuracy cost. This reduction alone does not distinguish the
 proposed regulariser from a plain per-layer $L_2$ penalty on spike count
 (Plain $L_2$), which lands on the same accuracy-spike curve. The two differ
 underneath that curve: at a matched spike budget, the proposed regulariser
-activates 13.1\% fewer neurons than Plain $L_2$ (regression coefficient
-0.869, $t=-21.5$, $n=21$), concentrating firing onto fewer neurons rather
-than weakening every neuron's firing uniformly. Our contribution is this
-neuron-usage measurement and the strength control that produces it, set
-through a single ratio against the task loss rather than a hand-tuned
-coefficient or a pre-set spike target. Validation to date is limited to
-ResNet-19 on CIFAR-10 in simulation; we do not claim an accuracy advantage
-over Plain $L_2$, generality beyond this architecture and dataset, or a
-measured benefit on neuromorphic hardware.
+activates 13.1\% fewer neurons than Plain $L_2$, concentrating firing onto fewer neurons rather
+than weakening every neuron's firing uniformly. Our contributions are this
+neuron-usage measurement and, separately, a strength control that sets the
+regulariser through a single ratio against the task loss rather than a
+hand-tuned coefficient or a pre-set spike target -- a tentative distinction
+from prior automated approaches, pending a control that applies the same
+ratio controller to Plain $L_2$. Validation to date is limited to
+ResNet-19 on CIFAR-10 in simulation, without an accuracy advantage over
+Plain $L_2$, generality beyond this setting, or a measured
+neuromorphic-hardware benefit.
