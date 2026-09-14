@@ -13,7 +13,10 @@
 ## Global Constraints
 
 - 본문 8쪽, CVPR 2단 조판. 부록은 분량 제한 없음.
-- **§3 Method 는 이번 범위 밖이다.** 다른 절에서 Method 내부를 특정하는 표현(`1−maxnorm`, `final_step`, `vmem gain`, `loss-ratio`)을 본문 서술에 쓰지 않는다. 예외는 §4 어블레이션 표의 행 이름뿐이며, 거기서도 이름은 `docs/paper/method-terms.md` 의 대응표를 통해서만 쓴다.
+- **§3 Method 는 이번 범위 밖이다.** 다른 절에서 Method 내부를 특정하는 표현(`1−maxnorm`, `final_step`, `vmem gain`, `loss-ratio`)을 본문 서술에 쓰지 않는다. 예외는 둘뿐이다 — (1) §4 어블레이션 표의 행 이름, 거기서도 `docs/paper/method-terms.md` 의
+  대응표를 통해서만 쓴다 (2) **§5 논의에서 세기 제어를 지칭할 때** (스펙 §9-C 고지 의무를 쓰려면
+  같은 대상을 여러 번 불러야 하고, 매번 다른 환언을 쓰면 독자가 다른 것으로 읽는다 — 2026-09-14 판정).
+  **수식·파일 경로·층 이름·텐서 모양은 어느 예외에도 해당하지 않는다.** Method 절 소관이다.
 - **VGG-16 결과는 논문에 넣지 않는다** (사용자 확정 2026-09-14).
 - 표 열 순서는 항상 **train loss → train acc → val loss → val acc → spikes**.
 - 반복 런은 개별 행을 모두 보이고 **그룹 바로 아래 줄에 평균**을 넣는다.
