@@ -4,16 +4,16 @@
 The efficiency argument for spiking neural networks (SNNs) rests on an unverified
 premise: that they fire sparsely. Models trained for accuracy alone are rarely audited
 for how much they actually fire. Under a standard direct-training setup --- ResNet-19 on
-CIFAR-10, $T=4$ --- training with no spike regularisation converges to 486,656 spikes
-(n=5) \cite{wu2018spatio,neftci2019surrogate,zheng2021going}.
+CIFAR-10, $T=4$ --- training with no spike regularisation converges to 488,619 spikes
+(n=4) \cite{wu2018spatio,neftci2019surrogate,zheng2021going}.
 
 Half of that firing turns out to be unnecessary. Under the same setup, cutting spikes by
-51.5\% leaves accuracy unchanged: the unregularised baseline reaches
-$96.654 \pm 0.065$ at 486,656 spikes (n=5), while our regulariser at
-$\rho{=}3{\times}10^{-3}$ reaches $96.650 \pm 0.168$ at 235,802 spikes (n=4), a 51.5\%
-reduction. The gap between the two, $-0.004$ percentage points, is one sixteenth of the
-baseline's own standard deviation, and it sits above the lossless line (baseline mean
-minus two standard deviations, 96.524). Directly trained SNNs therefore converge to an
+51.7\% leaves accuracy unchanged: the unregularised baseline reaches
+$96.720 \pm 0.067$ at 488,619 spikes (n=4), while our regulariser at
+$\rho{=}3{\times}10^{-3}$ reaches $96.650 \pm 0.168$ at 235,802 spikes (n=4), a 51.7\%
+reduction. The gap between the two, $-0.070$ percentage points, is about one baseline
+standard deviation, and it sits above the lossless line (baseline mean minus two
+standard deviations, 96.585). Directly trained SNNs therefore converge to an
 over-firing state.
 
 Regularisers that penalise the total spike count date back to 2016, and two problems

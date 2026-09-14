@@ -1,18 +1,21 @@
 # T1 run list (task 11) — explicit, do not glob.
 # Selection follows spec §2 A1 / §12-1: (1) must complete 310 epochs,
-# (2) S30/S1 >= 0.19, (3) if >5 remain, keep top-4 by val_acc.
-# Verified with collect_paper.py on 2026-09-14.
+# (2) S30/S1 >= 0.19, (3) rule 3 applied SYMMETRICALLY to every condition:
+# if a condition has >4 valid runs, keep only the top-4 by val_acc.
+# Verified with collect_paper.py on 2026-09-14. Run-set frozen 2026-09-14:
+# `_paper/r19c10-base---s13` completed at 16:47 that day, raising baseline
+# from 5 to 6 valid candidates; rule 3 then drops its lowest two. Runs
+# completing after the freeze are out of scope without a re-freeze decision.
 
-# baseline (regularization off) — 5 runs, canonical list from spec §2 A1.
-# NOTE: `_paper/*` alone only catches 2 of these 5 — the other 3 live in
-# separate directories. `_paper/r19c10-base---s13` is intentionally excluded
-# (spec: 307-epoch run; treated as not part of the canonical 5 regardless of
-# what a fresh collect_paper.py completion check reports today).
+# baseline (regularization off) — 6 valid candidates, rule 3 keeps top 4 by
+# val_acc (spec §2 A1). `_paper/*` alone only catches 3 of these 6 — the
+# rest live in separate directories.
+_paper/r19c10-base---s13
 _paper/r19c10-base---s11
-_paper/r19c10-base---s12
-_baseline_more/base_r19_c10_run3
-_baseline_no_reg_r19_c10
 _baseline_trajectory
+_baseline_more/base_r19_c10_run3
+# _baseline_no_reg_r19_c10       (96.60 val_acc — dropped by rule 3, rank 5/6)
+# _paper/r19c10-base---s12       (96.59 val_acc — dropped by rule 3, rank 6/6)
 
 # proposed method (prop), rho=2e-3 — only 2 runs exist, both valid (s3 failed at ep0).
 _paper/r19c10-prop-2e-3-s1
@@ -24,12 +27,12 @@ _paper/r19c10-prop-3e-3-s3
 _paper/r19c10-prop-3e-3-s4
 _paper/r19c10-prop-3e-3-s5
 
-# proposed method (prop), rho=4e-3 — 5 of 5 valid.
+# proposed method (prop), rho=4e-3 — 5 valid, rule 3 keeps top 4 by val_acc.
 _paper/r19c10-prop-4e-3-s1
 _paper/r19c10-prop-4e-3-s2
-_paper/r19c10-prop-4e-3-s3
 _paper/r19c10-prop-4e-3-s4
 _paper/r19c10-prop-4e-3-s5
+# _paper/r19c10-prop-4e-3-s3     (96.49 val_acc — dropped by rule 3, rank 5/5)
 
 # plain L2, lambda=1e-7 — only 1 run exists.
 _paper/r19c10-l2-1e-7-s1
@@ -40,12 +43,12 @@ _paper/r19c10-l2-2p5e-7-s2
 _paper/r19c10-l2-2p5e-7-s3
 _paper/r19c10-l2-2p5e-7-s4
 
-# plain L2, lambda=5e-7 — 5 of 5 valid.
-_paper/r19c10-l2-5e-7-s1
+# plain L2, lambda=5e-7 — 5 valid, rule 3 keeps top 4 by val_acc.
 _paper/r19c10-l2-5e-7-s2
 _paper/r19c10-l2-5e-7-s3
 _paper/r19c10-l2-5e-7-s4
 _paper/r19c10-l2-5e-7-s5
+# _paper/r19c10-l2-5e-7-s1       (96.38 val_acc — dropped by rule 3, rank 5/5)
 
 # 1-softmax, lambda=1e-7 — 3 of 3 valid.
 _paper/r19c10-sm-1e-7-s1

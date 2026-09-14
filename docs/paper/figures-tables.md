@@ -12,7 +12,7 @@ Task 6·11·12·13 은 이 문서의 번호로만 표/그림을 부른다.
 
 | ID | 내용 | 생성 명령 | 게이트 | 배치 | 근거 |
 |---|---|---|---|---|---|
-| T1 | R19-C10 주 비교표 — base/l2/sm/prop 이 190~202K 스파이크 구간에 모임 | `python collect_paper.py '_paper/r19c10-{base,l2,sm,prop}-*' --out _results/t1_r19c10_main.csv` 후 baseline 은 스펙 §2 A1 정본 5런 목록(`_paper/r19c10-base---s11`, `---s12`, `_baseline_more/base_r19_c10_run3`, `_baseline_no_reg_r19_c10`, `_baseline_trajectory`)으로 수동 대체 — 글롭만 쓰면 2런만 잡혀 평균이 어긋난다 | 없음 | **본문 (필수)** | 헤드라인 C1(무손실 51.5% 감소)의 유일한 직접 증거. 스펙이 본문으로 못 박음 |
+| T1 | R19-C10 주 비교표 — base/l2/sm/prop 이 190~202K 스파이크 구간에 모임 | `python collect_paper.py '_paper/r19c10-{base,l2,sm,prop}-*' --out _results/t1_r19c10_main.csv` 후 `docs/paper/runs-t1.txt` 의 정본 런 목록(baseline 유효 6런에 규칙 3 상위 4개, 다섯 디렉토리에 흩어져 있음)으로 수동 대체 — 글롭만 쓰면 일부만 잡혀 평균이 어긋난다 | 없음 | **본문 (필수)** | 헤드라인 C1(무손실 51.7% 감소)의 유일한 직접 증거. 스펙이 본문으로 못 박음 |
 | T2 | 선행 연구 대비 (SOTA 표) | 자동화 없음 — 문헌값 수기 입력 (§2.2/§2.3 인용 논문의 보고 수치) | 없음 | 본문 | 표가 작고(수기 입력, 성능 축만) 독자가 §1 헤드라인을 문헌 맥락에 놓는 데 필요 — 8쪽 여유가 있는 한 유지 |
 | T3 | 어블레이션 — 2단 구성(같은 ρ 행 + 스파이크 맞춘 행) | 같은 ρ 행: `python collect_paper.py '_paper/r19c10-abl_{novmem,nofinal,noinv,nolr}-*' --out _results/t3_ablation_samerho.csv`. 맞춘 행: 스펙 §12-4 목표(−vmem ρ≈2.6e-3, −final_step ρ≈2.9e-3, −loss-ratio λ≈3.2e-7)로 `run_paper.py` 재실행 후 동일 명령으로 재집계 | **맞춘 행 12런 미실행 — 승인 대기 (§12-4)** | **본문 (필수)** | 스펙이 본문으로 못 박음. 맞춘 행이 비어 있으면 같은 ρ 행만으로 축소해 싣고 "맞춘 행 미실행"을 표 각주에 명시 |
 | T4 | 학습 비용 (ms/step) | 완료 — 스펙 §2 A7 표를 그대로 전재 (310에폭 평균, train.log 타임스탬프 기반 수기 계산). 자동 재생성 스크립트 없음 | 없음 | **본문 (필수)** | 스펙이 본문으로 못 박음. "규제 시 10% 느려지되 전 비교군 중 가장 쌈"이 CONTRIB-2 의 비용 근거 |
