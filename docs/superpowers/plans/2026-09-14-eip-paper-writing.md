@@ -22,6 +22,9 @@
 - 스파이크 수는 **eval/test 프로토콜(`train.log` 의 `s_count`)** 만 쓴다. 학습 모드(`reg_detail.csv` 의 `spike_count`)와 섞지 않는다. S30/S1 만 학습 모드다.
 - 사전 등록 배제 규칙(제안법·비교군 대칭 적용): (1) 310에폭 미완주 (2) S30/S1 < 0.19 (3) 남으면 val_acc 상위 4개.
 - `_paper_bad_seeded/` 의 런은 **어떤 표에도 넣지 않는다** (`run_seed` 고정본).
+- **커밋 메시지에 `Co-Authored-By: Claude ...` / `Claude-Session: ...` 트레일러를 넣지 않는다**
+  (2026-09-14 사용자 지시, 메모리 `no-claude-coauthor`). 논문 저장소라 커밋 이력이 공개될 수 있다.
+  기본 지침이 붙이라고 해도 이 지시가 우선한다.
 - 기각된 주장 셋은 본문 어디에도 쓰지 않는다: plain L2 대비 정확도 우위 / WTA·측면 억제가 실제로 일어남 / 전 층 집중.
 
 ---
@@ -434,35 +437,24 @@ git commit -m "paper: outline related work with six subsections and citation key
 - 스파이크 수는 eval/test 프로토콜. 학습 모드 S30/S1 은 선별에만 쓴다.
 ```
 
-- [ ] **Step 2: 표 6개를 확정한다**
+- [ ] **Step 2: 표 목록을 스펙 §8 에서 옮겨 적는다**
 
-```markdown
-| # | 제목 | 생성 | 게이트 |
-|---|---|---|---|
-| T1 | R19-C10 주 결과 (baseline / L2 / 1−softmax / 제안법, λ·ρ 3점씩) | `collect_paper.py @docs/paper/runs-t1.txt` — **글롭 금지** | — |
-| T2 | 선행 연구 대비 정확도–스파이크 (SOTA 표) | 수기 + 문헌값 | — |
-| T3 | 어블레이션 — **정확도·착지점·뉴런당 발화 3열을 같이** | `collect_paper.py` + `EIP_fig/neuron_usage.py` | G2 |
-| T4 | 데이터셋·아키텍처 일반성 (C100, Spikformer, DVS, SDT-V3) | `collect_paper.py` | G3, G6, G8 |
-| T5 | 에너지 추정 (SynOps × pJ, Horowitz 계수) | 신규 스크립트 | — |
-| T6 | **Speck 실측** (지연·전력·정확도) | 별도 머신 | **G7** |
-```
+**번호를 새로 만들지 않는다.** 이전 세션에서 T1~T4·T7 과 F2/F3 이 이미 쓰였고, 스펙 §8 이
+그 번호를 정본으로 고정했다. `docs/paper/figures-tables.md` 에 스펙 §8 의 표 8개(T1~T8)를
+그대로 옮기고, **본문/부록 배치만 정한다.**
 
-T3 에 3열을 같이 넣는 이유: 정확도 단독으로는 재려는 효과가 0.11~0.22%p 인데
-잔차 sd 가 0.126 이다. 같은 실험에서 착지점 차이는 2.3배(192K vs 437K), 뉴런 사용
-차이는 15% 로 훨씬 큰 신호가 나온다.
+본문 최소 구성은 스펙이 못 박았다: **T1 · T3 · T4 · F1 · F4 · (F2+F3 합쳐 2패널)**.
+8쪽에 더 들어갈 자리가 있으면 T2 → T8 순으로 본문에 올리고, 없으면 부록으로 내린다.
+배치 판단의 근거를 한 줄씩 적는다.
 
-- [ ] **Step 3: 그림 6개를 확정한다**
+- [ ] **Step 3: 그림 목록을 스펙 §8 에서 옮겨 적는다 (F1~F7)**
 
-```markdown
-| # | 제목 | 생성 | 게이트 |
-|---|---|---|---|
-| F1 | 정확도–스파이크 곡선, 19종 가중 설계가 한 곡선에 (§1 P4 의 그림) | 신규 | — |
-| F2 | 같은 예산·다른 뉴런 사용 (활성 뉴런 회귀 + 최근접 쌍) | `EIP_fig/neuron_usage.py` (a) | — |
-| F3 | 뉴런당 발화 강도 4방법 비교 | `EIP_fig/neuron_usage.py` (b) | — |
-| F4 | 층별 지니·상위10% 점유 — **초·중반층에서만 갈린다** | `EIP_fig/neuron_usage.py` (c)(d) | — |
-| F5 | 에폭별 λ 궤적과 정확도 (ep200 cutmix 종료 반응 포함) | `EIP_fig/lambda_epoch.py` | — |
-| F6 | Speck 실측 그림 | 별도 머신 | **G7** |
-```
+F2·F3·F4 항목에는 **캡션 필수 단서 두 개**를 함께 적는다 — (1) 후반층에서는 세 방법이
+구분되지 않는다 (2) `dead_neuron_ratio` 는 배치 100장 기준이다.
+
+그리고 스펙 §8 의 경고를 옮긴다: **층별 지니·상위10% 값이 두 세트 존재한다**
+(09-10 측정 vs 09-14 `neuron_usage.py`). 한 논문 안에서 섞지 말고 하나를 골라 전부
+그것으로 쓴다. **어느 세트를 쓸지 여기서 정하고 근거를 적는다.**
 
 - [ ] **Step 4: Method 용어 대응표를 만든다**
 
@@ -483,7 +475,14 @@ T3 에 3열을 같이 넣는 이유: 정확도 단독으로는 재려는 효과�
 
 Method 가 확정되면 **이 파일만** 고친다. `paper/sections/*.tex` 는 건드리지 않는다.
 
-- [ ] **Step 5: 검증 — 생성 명령이 실제로 도는지**
+- [ ] **Step 5: 검증 — 생성 명령이 실제로 도는지, 번호가 스펙과 일치하는지**
+
+```bash
+grep -oE '\bT[1-9]\b|\bF[1-7]\b' docs/paper/figures-tables.md | sort -u
+grep -oE '\bT[1-9]\b|\bF[1-7]\b' docs/superpowers/specs/2026-09-14-eip-paper-spec.md | sort -u
+```
+두 출력이 같아야 한다. 다르면 번호를 새로 만든 것이다.
+
 
 ```bash
 cd EIP_fig && /home/kyccj/anaconda3/envs/venv_1/bin/python neuron_usage.py && \
@@ -568,8 +567,15 @@ git commit -m "paper: fix table and figure inventory with generation commands"
   두는 관행에 대한 반례.
 - 의도했던 WTA 는 생기지 않았다. 억제상관 +0.61~0.69, 균일 대조군 +0.642 와 구별 안 됨.
   **이걸 숨기지 않고 쓴다.** §2.6 과 짝을 이룬다.
-- 학습 비용: 695 vs 712 ms/step. 3%p 라 작다. 한 문장으로만.
+- 학습 비용: **규제를 켜면 baseline 631 → 695 ms/step (+10.0%). 이는 모든 비교군보다 적다**
+  (plain L2 +12.8%, 1−softmax +20.2%, 매 시점 호출 +33.2%). T4 참조.
+  "제안법이 L2 보다 싸다" 만 쓰면 baseline 대비 비용을 숨기는 것이 된다.
 - (G4 시) λ 자동화 — loss-ratio 는 plain L2 에도 붙는다. `l2+loss-ratio` 대조군 결과로만 말한다.
+- **SynOps 축은 빼고 "같은 SynOps 에서 뉴런을 적게 쓴다" 로 쓴다** (스펙 §9-D).
+  스파이크당 SynOps 가 1,505 vs 1,488 = +1.1% 라 에너지 표로는 우위가 안 나온다.
+- **고지 의무 §9-A~I 를 Limitations 또는 본문 해당 위치에 배치한다.** 특히 §9-B(λ ep201
+  급락 원인 미확인)는 **F6 과 CONTRIB-2 를 쓰기 전에 확인**해야 한다 — 확인 전에는
+  "스케줄과 무관하다" 를 주장하지 않는다.
 
 ### §5.x Limitations
 - 조건당 n=4 이고, 조합별로는 유의하지 않다. 주장은 방향의 일관성에 근거한다.
@@ -924,7 +930,10 @@ git add -A paper EIP_fig && git commit -m "paper: add internal-state analysis se
 - Produces: 완성된 본문
 
 - [ ] **Step 1: §5 를 쓴다.** WTA 가 생기지 않았다는 서술을 **빼지 않는다.**
-- [ ] **Step 2: Limitations 를 독립 소절로 둔다.** 개요의 네 항목을 그대로.
+- [ ] **Step 2: Limitations 를 독립 소절로 둔다.** 개요의 네 항목 + **스펙 §9 의 고지 의무
+중 §4·§5 에 자리가 없는 것 전부.** §9-A(도함수 아님)·§9-E(대리 기울기 불일치)·
+§9-F(QKFormer 포팅 버그)·§9-G(eval 프로토콜)·§9-H(두 종류의 침묵 뉴런)는 빠뜨리면
+리뷰어가 잡는다.
 - [ ] **Step 3: §6 은 세 문장.** 새 주장 금지.
 - [ ] **Step 4: 초록을 마지막에 쓴다.** 150~200 단어. 구성: 문제 1문장 → 관찰 1문장 →
       핵심 수치 2문장(51.5% 감소 / 같은 예산에서 −15.4% 뉴런) → 기여 1문장 → 검증 범위 1문장.
