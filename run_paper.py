@@ -20,6 +20,7 @@
     abl_nofinal 제안법에서 final_step 만 끔     (시점의 기여)
     abl_novmem  제안법에서 vmem 만 끔 (gain=0)  (막전위의 기여)
     abl_noinv   제안법에서 1- 반전만 끔         (maxnorm_plain = sc/max. 이름의 근거)
+    abl_nolr    제안법에서 loss-ratio 만 끔  (고정 lambda. knob 이 rho 가 아니라 lambda)
 
 **선별** — 조건당 5런을 돌리고 4개를 쓴다. 배제 규칙은 제안법과 비교군에 똑같이 적용한다:
     (1) 310에폭 미완주  (2) S30/S1 < 0.19  (3) 그래도 5개 남으면 val_acc 상위 4개.
@@ -87,6 +88,13 @@ def METHODS(name, knob):
         return {**BASE, **WTA, **MAXNORM, 'reg_spike_vmem_gain': 0.0,
                 'reg_spike_vmem_silent_only': False,
                 'reg_spike_final_step': True, **RATIO(knob)}
+    if name == 'abl_nolr':
+        # loss-ratio 제거 — 제안법 그대로에 **고정 lambda**. knob 이 rho 가 아니라 lambda 다.
+        # loss-ratio 는 lambda 를 매 에폭 rho*L_task/R 로 다시 푼다. 실측(prop rho=4e-3, n=5)
+        # 궤적은 ep1 4.35e-7 -> ep50 4.9e-7 -> ep300 2.6e-7 로 올랐다가 반으로 떨어진다.
+        # 시간평균 4.0e-7, 중반 고원 4.83e-7, 후반 2.58e-7.
+        # 이 팔은 "그 궤적이 필요한가, 같은 착지점이면 그만인가" 를 묻는다.
+        return {**BASE, **WTA, **MAXNORM, **VMEM, 'reg_spike_final_step': True, **FIXED(knob)}
     if name == 'abl_noinv':
         # 1- 반전 제거: sc_rate = sc/max. 침묵 뉴런이 sc_rate=0 이 되어 규제에서 빠진다
         return {**BASE, **WTA, **VMEM, 'reg_spike_out_sc_maxnorm': False,
@@ -94,6 +102,11 @@ def METHODS(name, knob):
                 'reg_spike_final_step': True, **RATIO(knob)}
     raise SystemExit(f'모르는 방법: {name}')
 
+
+# 실험 산출물(체크포인트·CSV·train.log)은 로컬 SSD 가 아니라 HDD 에 쌓는다.
+# 루트 디렉토리가 652개까지 늘고 SSD 가 84% 차서 26-09-14 에 옮겼다.
+# paper/ 는 논문 후보, archive/ 는 과거 실험 라인.
+STORE = '/media/hdd1/kyccj/EIP/paper'
 
 RE_NAME = re.compile(r"^conf\.exp_set_name\s*=\s*'[^']*'", re.M)
 RE_GPU = re.compile(r'^os\.environ\["CUDA_VISIBLE_DEVICES"\]\s*=\s*"\d+"', re.M)
@@ -105,8 +118,12 @@ def fmt(v):
     return v if isinstance(v, str) else repr(v)
 
 
-def override_block(flags_d, seed, epochs=0, fix_seed=False):
+def override_block(flags_d, seed, tag, epochs=0, fix_seed=False):
     lines = [MARK_A]
+    # config_snn_training.py:35 의 `conf.root_model_save=conf.exp_set_name` 을 덮어쓴다.
+    # 리터럴 tag 를 쓰는 이유: 같은 파일 L171 이 exp_set_name 에 '_asym' 을 덧붙이므로
+    # conf.exp_set_name 을 참조하면 이 블록의 실행 순서에 결과가 달라진다.
+    lines.append(f"conf.root_model_save = {STORE + '/' + tag!r}")
     for k in sorted(flags_d):
         lines.append(f'conf.{k} = {fmt(flags_d[k])}')
     # 시드는 기본적으로 **태그에만** 쓰고 RNG 는 안 건드린다 (run_seed=-1).
@@ -154,7 +171,7 @@ def make_config(combo, method, knob, seed, gpu, tag, epochs=0, fix_seed=False):
     c, n = RE_NAME.subn(f"conf.exp_set_name='{tag}'", c)
     if n < 1:
         raise RuntimeError(f'{tag}: 활성 exp_set_name 없음')
-    blk = override_block(METHODS(method, knob), seed, epochs, fix_seed)
+    blk = override_block(METHODS(method, knob), seed, tag, epochs, fix_seed)
     c, n = RE_SET.subn(blk + '\nconfig.set()', c, count=1)
     if n != 1:
         raise RuntimeError(f'{tag}: config.set() 을 못 찾음 ({n}개)')
@@ -247,7 +264,16 @@ def run_one(gpu, combo, method, knob, seed, tag, sweep_dir, epochs=0, fix_seed=F
     env['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/home/kyccj/anaconda3/envs/venv_1'
     print(f"[{time.strftime('%m-%d %H:%M')}] [GPU {gpu}] START {tag}  "
           f"({combo} {method} knob={knob} seed={seed})", flush=True)
-    with open(os.path.join(d, 'train.log'), 'w') as lf:
+    # train.log 도 HDD 에 쌓는다 (런당 ~25MB, 누적 14GB 였다). 로컬에는 심볼릭 링크만
+    # 남겨 collect_paper.py 등 _paper/<tag>/train.log 를 읽는 도구가 그대로 동작하게 한다.
+    store_dir = os.path.join(STORE, tag)
+    os.makedirs(store_dir, exist_ok=True)
+    log_path = os.path.join(store_dir, 'train.log')
+    link = os.path.join(d, 'train.log')
+    if os.path.islink(link) or os.path.exists(link):
+        os.remove(link)
+    os.symlink(log_path, link)
+    with open(log_path, 'w') as lf:
         rc = subprocess.Popen([PYTHON, os.path.join(d, 'main_sweep.py')], cwd=PROJECT_ROOT,
                               stdout=lf, stderr=subprocess.STDOUT, env=env).wait()
     print(f"[{time.strftime('%m-%d %H:%M')}] [GPU {gpu}] DONE  {tag} rc={rc}", flush=True)
@@ -274,7 +300,7 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='prop sm l2 abl_nofinal abl_novmem abl_noinv')
+    ap.add_argument('method', nargs='?', help='base prop sm l2 abl_nofinal abl_novmem abl_noinv abl_nolr')
     ap.add_argument('knob', nargs='?', help="prop/abl 은 rho, sm/l2 는 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
@@ -291,7 +317,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop sm l2 abl_nofinal abl_novmem abl_noinv')
+        print('\n방법: base prop sm l2 abl_nofinal abl_novmem abl_noinv abl_nolr')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 

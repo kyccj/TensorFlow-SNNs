@@ -76,6 +76,18 @@ def read_conf(run_dir):
     return out
 
 
+def planned_epochs(run_dir, default=310):
+    """train.log 의 'Epoch n/N' 에서 N. 없으면 default.
+
+    completed 를 len(rows) >= 300 으로 재던 것이 버그였다 — 302 에폭에서 멈춘 런이
+    완주로 잡혀 사전 등록한 '310 완주 실패 -> 배제' 규칙을 그냥 통과했다."""
+    fp = os.path.join(run_dir, 'train.log')
+    if not os.path.exists(fp):
+        return default
+    m = re.search(r'Epoch\s+\d+/(\d+)', open(fp, errors='ignore').read())
+    return int(m.group(1)) if m else default
+
+
 def read_epochs(run_dir):
     """train.log 의 에폭 줄들을 dict 목록으로."""
     p = os.path.join(run_dir, 'train.log')
@@ -98,8 +110,18 @@ def read_epochs(run_dir):
 
 
 def spike_ratio(run_dir, save_name, at_epoch=30):
-    """S(at_epoch)/S(first) — 학습 모드 스파이크. proc.py:1254 와 같은 정의."""
-    for base in (save_name, run_dir):
+    """S(at_epoch)/S(first) — 학습 모드 스파이크. proc.py:1254 와 같은 정의.
+
+    26-09-14 에 실험 산출물을 /media/hdd1/kyccj/EIP 로 옮겼다. 예전에는 reg_detail.csv 가
+    저장소 루트의 <save_name>/ 에 있었으나 지금은 STORE/<save_name>/ 이다. 둘 다 본다 —
+    안 그러면 S30/S1 이 비고 사전 등록한 배제 규칙이 통째로 무력해진다.
+    """
+    STORE = '/media/hdd1/kyccj/EIP/paper'
+    ARCH = '/media/hdd1/kyccj/EIP/archive'
+    cands = [save_name, run_dir]
+    if save_name:
+        cands += [os.path.join(STORE, save_name), os.path.join(ARCH, save_name)]
+    for base in cands:
         if not base:
             continue
         p = os.path.join(base, 'reg_detail.csv')
@@ -132,7 +154,7 @@ def collect(run_dir):
     rec = {'run_dir': run_dir}
     rec.update(conf)
     rec['epochs'] = len(rows)
-    rec['completed'] = int(len(rows) >= 300)
+    rec['completed'] = int(len(rows) >= planned_epochs(run_dir))
     if rows:
         b = max(rows, key=lambda x: x['val_acc'])
         bi = rows.index(b)

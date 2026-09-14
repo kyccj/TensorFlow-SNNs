@@ -47,6 +47,16 @@ conf = config.flags
 conf.mode = 'inference'
 # inference 모드는 filepath_load 를 conf.root_model_load(기본 ./models_ckpt)에서 찾는데,
 # 실험은 conf.root_model_save(=exp_set_name)에 저장했다. 같은 곳을 보게 맞춘다.
+# 26-09-14: 산출물을 /media/hdd1/kyccj/EIP 로 옮겼다. 옮기기 전에 만들어진 config 는
+# root_model_save 가 저장소 루트 기준 상대경로(=exp_set_name)라 더 이상 존재하지 않는다.
+# 그 경우 HDD 쪽을 본다. weights 는 인자로 직접 받으므로 이건 config.set() 용이다.
+_rms = conf.root_model_save
+if not os.path.isdir(_rms):
+    for _root in ('/media/hdd1/kyccj/EIP/paper', '/media/hdd1/kyccj/EIP/archive'):
+        _c = os.path.join(_root, os.path.basename(_rms))
+        if os.path.isdir(_c):
+            conf.root_model_save = _c
+            break
 conf.root_model_load = conf.root_model_save
 config.set()
 assert not config.train, 'train 모드로 남아 있음'

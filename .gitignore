@@ -39,3 +39,13 @@ speck_specksim_portable.tar.gz
 EIP_figure/
 gapfill-gap_r19c10_2e-7/
 all_experiment_results.csv
+
+# --- 실험 산출물 보관 (26-09-14) ---
+# 루트에 디렉토리가 652개까지 늘어 탐색이 불가능해져 runs/ 아래로 옮겼다.
+# ckpt/ 체크포인트 출력, sweeps/ 과거 런처 소스, artifacts/ 대용량 산출물.
+# 되돌리려면 runs/MANIFEST.tsv 를 쓴다.
+runs/
+
+# 텐서보드는 /media/hdd1/kyccj/EIP/tensorboard 로 옮기고 심볼릭 링크만 남겼다.
+# 기존 `tensorboard/` 패턴은 디렉토리만 잡아 링크가 미추적으로 뜬다.
+/tensorboard
