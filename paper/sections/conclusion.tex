@@ -1,3 +1,14 @@
 \section{Conclusion}
 \label{sec:conclusion}
-% TODO: Task 14
+
+The main experimental result of this paper is the neuron-usage gap in
+\S\ref{sec:exp-analysis}: at matched spike counts, active neurons dropped by
+13.1\% under the proposed regulariser relative to Plain $L_2$, despite both
+landing on the same accuracy-spike curve.
+% GATE: G4
+Regularisation strength was set through one ratio tracked against the task
+loss during training, rather than a pre-set spike target or a hand-tuned
+coefficient -- a tentative distinction from prior work, pending a control
+that isolates the ratio controller from the choice of per-neuron weighting.
+Hardware validation on Speck and extension to the 173M-parameter SDT-V3
+architecture remain for future work.

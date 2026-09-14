@@ -1,3 +1,126 @@
 \section{Discussion}
 \label{sec:discussion}
-% TODO: Task 14
+
+The accuracy-spike curve in \S\ref{sec:exp-main} does not separate the proposed
+regulariser from Plain $L_2$: both arms land within run-to-run noise of each other
+on that curve. \S\ref{sec:exp-analysis} shows the curve is nevertheless not the
+whole comparison -- at matched spike counts, active-neuron usage separates the
+two arms, 13.1\% fewer for the proposed regulariser. A practice of
+comparing spike regularisers by their accuracy-spike curve alone would miss this
+gap entirely.
+
+The regulariser was designed around a hypothesis of lateral inhibition -- that
+weighting the spike-count penalty by per-neuron activity would make firing
+neurons actively suppress their neighbours, reproducing a winner-take-all
+dynamic without changing the network architecture. That did not happen. We
+measure the correlation between one neuron's firing and its neighbours'
+suppression at $+0.61$ to $+0.69$, which is not distinguishable from a
+uniform-weighting control at $+0.642$. The concentration reported in
+\S\ref{sec:exp-analysis} is real and measured, but it is concentration of
+firing onto fewer neurons, not evidence of the suppression mechanism the
+method was designed to produce.
+
+The per-neuron term that the regulariser adds to each active neuron's
+weighting is a designed, monotone update rule, not the derivative of the loss
+stated in \S\ref{sec:method}. The two agree in intent -- both push weighting
+away from neurons that are already firing -- but not in form. None of the
+results in \S\ref{sec:exp-main}--\S\ref{sec:exp-analysis} depend on treating
+the update as a literal gradient; we note the distinction here because a
+reader checking the method against its stated objective would otherwise
+expect the two to match, and we leave the derivation itself to
+\S\ref{sec:method}.
+
+% GATE: G2
+Judged only over training epochs 51--200, and only against a fixed-$\lambda$
+comparison arm, the ratio controller removes 18.7--20.3\% more spikes than
+the fixed setting without a matching loss in accuracy. We do not generalise
+this beyond the stated window: the fixed-$\lambda$ arm currently has one run
+at $\lambda=3\times10^{-7}$ and one at $\lambda=5\times10^{-7}$, too few to
+separate the controller's trajectory over training from its time-averaged
+strength, which differs from the fixed comparison value. Isolating the two
+needs eight further runs, matched by landing point and by average $\lambda$
+respectively, not yet run.
+
+A related question is why $\lambda$ moves the way it does. It drops 44\% at
+epoch 201, from $4.75\times10^{-7}$ to $2.68\times10^{-7}$, coinciding with
+CutMix being turned off; whether it also coincides with a specific point in
+the learning-rate schedule has not been checked. If it does, the ratio
+controller would be indirectly coupled to the training schedule in the same
+way an earlier, abandoned LR-linked variant of this method was, and the
+claim that regularisation strength requires no external tuning would need
+qualifying. We do not claim schedule-independence until this is checked.
+
+We do not use a SynOps-based energy estimate to claim an advantage over the
+comparison arms. Per-spike SynOps is 1,505 for the proposed regulariser
+against 1,488 for Plain $L_2$, a 1.1\% difference this sample cannot resolve,
+and the two arms distribute spikes across layers too similarly to build an
+energy table that separates them. The defensible statement is that, at the
+same SynOps count, the proposed regulariser uses fewer neurons -- not that it
+uses less energy.
+
+The two codebases behind this paper's results use different surrogate
+gradients. The TensorFlow codebase (ResNet-19, \S\ref{sec:exp-main}--%
+\S\ref{sec:exp-analysis}) uses an asymmetric surrogate (bias 0.8), while the
+QKFormer codebase uses SpikingJelly's \texttt{Sigmoid()}. Porting the
+asymmetric surrogate to the QKFormer codebase has been verified against the
+TensorFlow implementation (maximum absolute difference $0.00\times10^{0}$),
+but it is not enabled there by default, since turning it on would discard
+fifteen existing QKFormer runs. Each codebase applies its own choice
+uniformly across every arm, so within-codebase comparisons remain valid; we
+record the difference because it is inherited from each repository, not a
+contribution of this work.
+
+During development we found a porting bug in the QKFormer regulariser: an
+axis mismatch caused two of 35 layers to be regularised 2.75$\times$ more
+strongly than intended, a 5.9\% difference in the overall objective. We
+corrected it and re-measured.
+
+Outside \S\ref{sec:exp-analysis}, this paper's tables and reported figures
+are built entirely from eval/test-mode spike counts, never training-mode
+logging. We standardise on eval/test throughout because the two protocols
+disagree by a wide enough margin in the QKFormer codebase
+(\S\ref{sec:exp-setup}) that leaving the choice implicit would risk comparing
+two arms under different logging modes without a reader noticing; the one
+exception, \S\ref{sec:exp-analysis}'s
+active-neuron regression, is marked as training-mode throughout that section
+because the per-neuron logging it needs does not exist under eval/test.
+
+``Silent neuron'' means two different things in this paper, and only one of
+them is measured. \S\ref{sec:exp-analysis} reports the fraction of neurons
+quiet on a given 100-image batch, which underlies every active-neuron and
+concentration figure here. The framing that the regulariser turns off
+unnecessary neurons, however, implicitly invokes the stronger sense --
+neurons that never fire across the entire dataset, which would support a
+structural pruning argument. We have not measured that: doing so needs a
+full 10,000-image test-set pass (gate G5), and until it exists we do not
+equate the two.
+
+\subsection{Limitations}
+\label{sec:limitations}
+
+\begin{itemize}\itemsep0pt
+  \item Every condition in \S\ref{sec:exp-main} has $n=4$ runs, and no single
+  condition-pair comparison reaches significance on its own. The case for
+  using fewer active neurons rests on the consistency of its direction across
+  the regression in \S\ref{sec:exp-analysis} ($n=21$), not on any one
+  pairwise test.
+  \item The comparison in \S\ref{sec:exp-main} does not establish that the
+  proposed regulariser is more accurate than Plain $L_2$: the
+  regression-fitted offset between the two is within run-to-run noise
+  ($t=1.41$); reaching conventional significance at this effect size would
+  need approximately 48--60 runs, roughly 13 days of compute at the run
+  lengths used here, which we have not run and do not plan to.
+  \item The neuron-usage concentration reported in \S\ref{sec:exp-analysis}
+  is confined to early and middle layers; from conv3\_block2 onward the
+  compared arms are not distinguishable, so the claim does not extend to the
+  network as a whole.
+  \item We have not validated any of these results on neuromorphic hardware.
+  Gate G7 (Speck measurement) is unmet, so this paper reports simulation
+  only, and the neuron-usage gain in \S\ref{sec:exp-analysis} has not been
+  shown to translate into a measured hardware benefit.
+  \item Four of the training configuration files that \texttt{run\_paper.py}
+  points to sit outside version control, excluded by a \texttt{.gitignore}
+  rule for underscore-prefixed directories. Reproducing the exact runs
+  behind this paper's tables currently requires access to those files,
+  which is unresolved as of this writing.
+\end{itemize}
