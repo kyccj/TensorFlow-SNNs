@@ -29,8 +29,11 @@
 import argparse, os, re, subprocess, sys, threading, time
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-PYTHON = '/home/kyccj/anaconda3/envs/venv_1/bin/python'
-CUDA_LD_PATH = '/home/kyccj/anaconda3/envs/venv_1/lib'
+# 서버마다 conda 환경 위치가 다르다. EIP_PYTHON 으로 덮어쓴다.
+#   EIP_PYTHON=/srv2/kyccj/miniconda3/envs/venv_1/bin/python python run_paper.py ...
+PYTHON = os.environ.get('EIP_PYTHON', '/home/kyccj/anaconda3/envs/venv_1/bin/python')
+CUDA_LD_PATH = os.environ.get(
+    'EIP_CUDA_LD', os.path.join(os.path.dirname(os.path.dirname(PYTHON)), 'lib'))
 
 # 조합 -> 원본 config (모델·데이터셋·학습 하이퍼파라미터를 그대로 물려받는다)
 SOURCES = {

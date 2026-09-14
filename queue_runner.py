@@ -67,9 +67,13 @@ def finish(path, idx, status):
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def remote_claim(host, remote_root, tag):
+def _ssh(host, port):
+    return ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', '-p', str(port), host]
+
+
+def remote_claim(host, remote_root, tag, port=22):
     """큐 주인 서버에서 한 줄을 집어온다. 락은 그쪽에서 걸리므로 원자적이다."""
-    cmd = ['ssh', '-o', 'BatchMode=yes', host, 'python3',
+    cmd = _ssh(host, port) + ['python3',
            shlex.quote(os.path.join(remote_root, 'queue_claim.py')),
            'claim', '--tag', shlex.quote(tag)]
     out = subprocess.check_output(cmd, timeout=120).decode().strip()
@@ -79,10 +83,10 @@ def remote_claim(host, remote_root, tag):
     return int(p[0]), ['run'] + [''] + p[1:5] + ['', '']
 
 
-def remote_finish(host, remote_root, idx, status):
-    subprocess.run(['ssh', '-o', 'BatchMode=yes', host, 'python3',
-                    shlex.quote(os.path.join(remote_root, 'queue_claim.py')),
-                    'finish', str(idx), status], timeout=120)
+def remote_finish(host, remote_root, idx, status, port=22):
+    subprocess.run(_ssh(host, port) + ['python3',
+                   shlex.quote(os.path.join(remote_root, 'queue_claim.py')),
+                   'finish', str(idx), status], timeout=120)
 
 
 def busy_gpus(max_mib=200):
@@ -112,9 +116,13 @@ def main():
                          '(공유 파일시스템 없이 서버 간 큐 공유)')
     ap.add_argument('--remote-root', default='/home/kyccj/PycharmProjects/TensorFlow-SNNs',
                     help='큐 주인 서버의 저장소 경로')
+    ap.add_argument('--remote-port', type=int, default=23456,
+                    help='큐 주인 서버의 sshd 포트 (canus 는 22 가 아니라 23456)')
     a = ap.parse_args()
     gpus = [int(x) for x in a.gpus.split(',')]
-    assert not (set(gpus) & {6, 7}), 'GPU 6,7 은 juyun 소유다'
+    # GPU 6,7 금지는 canus 에만 해당한다 (juyun 소유). 다른 서버는 자기 GPU 를 다 쓴다.
+    if socket.gethostname() == 'canus':
+        assert not (set(gpus) & {6, 7}), 'canus 의 GPU 6,7 은 juyun 소유다'
     running = {}                       # gpu -> (Popen, idx, item)
 
     while True:
@@ -126,7 +134,7 @@ def main():
                 continue
             st = 'done' if rc == 0 else f'fail:{rc}'
             if a.remote:
-                remote_finish(a.remote, a.remote_root, idx, st)
+                remote_finish(a.remote, a.remote_root, idx, st, a.remote_port)
             else:
                 finish(a.queue, idx, st)
             print(f"[{time.strftime('%m-%d %H:%M')}] [GPU {g}] DONE  "
@@ -137,7 +145,7 @@ def main():
         got = None          # free 가 비면 아래 종료 판정에서 참조된다
         for g in free:
             tag = f'{socket.gethostname()}:gpu{g}'
-            got = (remote_claim(a.remote, a.remote_root, tag) if a.remote
+            got = (remote_claim(a.remote, a.remote_root, tag, a.remote_port) if a.remote
                    else claim(a.queue))
             if not got:
                 break
@@ -148,7 +156,7 @@ def main():
             print(f"[{time.strftime('%m-%d %H:%M')}] [GPU {g}] START "
                   f"{combo}-{meth}-{knob}-s{seed}  (착지예상 {c[6]})", flush=True)
             if a.dry:
-                (remote_finish(a.remote, a.remote_root, idx, 'todo') if a.remote
+                (remote_finish(a.remote, a.remote_root, idx, 'todo', a.remote_port) if a.remote
                  else finish(a.queue, idx, 'todo'))
                 print('   --dry: 되돌림, 실행 안 함', flush=True)
                 continue
