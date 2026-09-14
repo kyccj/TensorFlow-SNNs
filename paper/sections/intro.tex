@@ -30,9 +30,10 @@ simulated proxies --- Sorbaro et al.\ come from the group that manufactures the 
 sensor, yet report only sinabs simulation results, never a hardware measurement
 \cite{neil2016learning,sorbaro2020optimizing,pellegrini2021low,meda2022improving}.
 
-Curves are not the whole story. We vary the per-neuron weighting inside the spike-count
-penalty across 19 designs, and every one lands on the same accuracy-spike curve --- but
-the same point on that curve does not mean the same internal state. The observation that
+Curves are not the whole story. In our own exploration of per-neuron weightings inside
+the spike-count penalty, changing the weighting rule moved the operating point along the
+same accuracy-spike curve rather than off it (observed on VGG-16/CIFAR-10; not reported
+here) --- but the same point on that curve does not mean the same internal state. The observation that
 spike reduction is mostly neuron silencing was made first by Activity Pruning
 (NeurIPS 2025) \cite{bu2025activity}; what we add is that \emph{which} neurons are
 silenced differs by method. Regressing log active-neuron count on log spike count and
@@ -65,9 +66,10 @@ pruning benefit.
 
 Taken together, this paper makes the following contributions.
 \begin{itemize}\itemsep0pt
-  \item Nineteen weighting designs for the spike-count penalty all converge to the same
-  accuracy-spike curve, but the same point on that curve does not imply the same
-  internal state: at a matched spike budget, the active-neuron count differs by 13.1\%.
+  \item At a matched spike budget, our regulariser uses 13.1\% fewer active neurons than
+  the layer-wise $L_2$ penalty (ANCOVA coefficient 0.869, $t=-21.5$, $n=21$,
+  ResNet-19/CIFAR-10): the same point on the accuracy-spike curve does not imply the
+  same internal state.
   % GATE: G4
   \item We set the regularisation strength through a single dimensionless ratio between
   the task loss and the regularisation term, needing neither an absolute SynOps target

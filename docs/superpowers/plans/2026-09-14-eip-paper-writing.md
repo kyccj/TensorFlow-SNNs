@@ -83,9 +83,10 @@ arXiv 미러. 못 구하면 **"(a)(b) 미확인" 을 그대로 기록하고 넘�
 ```markdown
 ## 확정 기여
 
-CONTRIB-1: 가중 설계 19종이 같은 정확도–스파이크 곡선에 수렴하지만, 곡선 위 같은 자리가
-           같은 내부 상태를 뜻하지 않는다 — 같은 예산에서 활성 뉴런 수가 13% 다르다.
-           [선점 안 됨. 논문의 무게중심]
+CONTRIB-1 (2026-09-14 갱신, task-13b): 같은 스파이크 예산에서 활성 뉴런을 13.1% 적게
+           쓴다 (ANCOVA 계수 0.869, t=−21.5, n=21, ResNet19/CIFAR-10). 가중 설계 간
+           등가성 관찰은 그림·수치 없는 동기 서술로만 남긴다 (VGG16-CIFAR10 탐색,
+           논문 범위 밖 — spec §2 A8). [선점 안 됨. 논문의 무게중심]
 CONTRIB-2: 규제 세기를 무차원 비율 하나로 정한다. 절대 목표도 예산에 대한 사전 지식도
            필요 없다. [Sorbaro 2020 의 정적 1/S0², Activity Pruning 의 손으로 박은
            eta/eta2 와 대비. **G4 가 채워져야 성립**]
@@ -276,8 +277,11 @@ git commit -m "paper: add verified bibliography with per-entry audit"
 [게이트] 없음 — 2026-09-14 원문·코드 확인 완료
 
 ### P4 — 곡선이 전부가 아니다 (본 논문의 핵심 관찰)
-[주장] 가중치 설계를 19종 바꿔 봐도 전부 같은 정확도–스파이크 곡선에 떨어진다.
-       그런데 곡선 위 같은 자리가 같은 내부 상태를 뜻하지 않는다.
+[주장] 같은 스파이크 예산에서 제안법은 활성 뉴런을 13.1% 적게 쓴다. 곡선 위 같은
+       자리가 같은 내부 상태를 뜻하지 않는다.
+[동기 서술 — 수치·그림 없음, 2026-09-14 결정] 우리 탐색에서는 가중 규칙을 바꿔도
+       운영점이 같은 곡선 위를 움직였다 (VGG16-CIFAR10 에서 관찰, 본 논문에는
+       싣지 않는다 — 유효 설계 13종뿐이고 VGG16 은 논문 범위 밖, spec §2 A8).
 [근거] 같은 스파이크 예산(≈193K)에서 plain L2 는 뉴런 155,669개, 제안법은 131,641개
        (−15.4%). 회귀 계수 0.869, t = −21.5, n = 21.
        뉴런당 발화: 규제없음 1.621 > 제안법 1.479 > 1−softmax 1.370 > plain L2 1.284
@@ -426,7 +430,8 @@ git commit -m "paper: outline related work with six subsections and citation key
 
 **Interfaces:**
 - Consumes: 스펙 §1 실험 범위, §5 재현 경로
-- Produces: `docs/paper/figures-tables.md` — T1~T6 / F1~F6 의 **번호·제목·생성 명령·의존 게이트**. Task 6·11·12·13 이 이 번호로만 표/그림을 부른다.
+- Produces: `docs/paper/figures-tables.md` — T1~T6 / 그림 번호대의 **번호·제목·생성 명령·의존 게이트**
+  (2026-09-14 task-13b 로 파레토 곡선 번호는 폐기됐다). Task 6·11·12·13 이 이 번호로만 표/그림을 부른다.
 
 - [ ] **Step 1: 실험 설정 개요를 적는다**
 
@@ -447,11 +452,13 @@ git commit -m "paper: outline related work with six subsections and citation key
 그 번호를 정본으로 고정했다. `docs/paper/figures-tables.md` 에 스펙 §8 의 표 8개(T1~T8)를
 그대로 옮기고, **본문/부록 배치만 정한다.**
 
-본문 최소 구성은 스펙이 못 박았다: **T1 · T3 · T4 · F1 · F4 · (F2+F3 합쳐 2패널)**.
+본문 최소 구성: **T1 · T3 · T4 · F4 · (F2+F3 합쳐 2패널)**. 스펙 §8 이 원래 못 박은
+구성에는 파레토 곡선 그림도 있었으나 2026-09-14 task-13b 로 그 그림을 폐기했다
+(가중 설계 등가성은 그림·수치 없는 동기 서술로만 §1 에 남는다, spec §2 A8).
 8쪽에 더 들어갈 자리가 있으면 T2 → T8 순으로 본문에 올리고, 없으면 부록으로 내린다.
 배치 판단의 근거를 한 줄씩 적는다.
 
-- [ ] **Step 3: 그림 목록을 스펙 §8 에서 옮겨 적는다 (F1~F7)**
+- [ ] **Step 3: 그림 목록을 스펙 §8 에서 옮겨 적는다 (그림 번호대 전체)**
 
 F2·F3·F4 항목에는 **캡션 필수 단서 두 개**를 함께 적는다 — (1) 후반층에서는 세 방법이
 구분되지 않는다 (2) `dead_neuron_ratio` 는 배치 100장 기준이다.
@@ -492,8 +499,9 @@ grep -oE '\bT[1-9]\b|\bF[1-7]\b' docs/superpowers/specs/2026-09-14-eip-paper-spe
 cd EIP_fig && /home/kyccj/anaconda3/envs/venv_1/bin/python neuron_usage.py && \
   /home/kyccj/anaconda3/envs/venv_1/bin/python lambda_epoch.py && ls -la *.png
 ```
-두 스크립트가 오류 없이 png 를 갱신해야 한다. F1·T5 는 아직 스크립트가 없으므로
-`docs/paper/figures-tables.md` 에 **"스크립트 없음 — Task 13 에서 작성"** 으로 표시한다.
+두 스크립트가 오류 없이 png 를 갱신해야 한다. 파레토 곡선 그림·T5 는 아직 스크립트가
+없으므로 `docs/paper/figures-tables.md` 에 **"스크립트 없음 — Task 13 에서 작성"** 으로
+표시한다.
 
 - [ ] **Step 6: 커밋**
 
@@ -519,7 +527,7 @@ git commit -m "paper: fix table and figure inventory with generation commands"
 ### §4.2 Main result — 무손실 51% 감소
 [주장] 정확도를 잃지 않고 스파이크를 51.7% 줄인다.
 [표] T1.  baseline 96.720 ± 0.067 @ 488,619 (n=4)  vs  제안법 ρ=3e-3 96.650 @ 235,802 (n=4)
-[그림] F1
+[그림] 없음 — 파레토 곡선 그림은 2026-09-14 task-13b 로 폐기
 [게이트] 없음
 [쓰지 않을 것] plain L2 대비 정확도 우위. +0.071%p, t=1.41 이다. 같은 자리의 L2 는
               96.550 @ 246,865 이고 이 차이는 주장할 수 없다.
@@ -893,33 +901,25 @@ git add -A paper && git commit -m "paper: add ablation and generality sections"
 
 **Files:**
 - Modify: `paper/sections/experiments.tex`
-- Create: `EIP_fig/pareto_curve.py` (F1), `paper/figures/` (png 복사본)
 
 **Interfaces:**
-- Consumes: `docs/paper/figures-tables.md` 의 F1~F5, `EIP_fig/neuron_usage.py` (F2~F4), `EIP_fig/lambda_epoch.py` (F5)
-- Produces: F1 스크립트와 `paper/figures/*.pdf`
+- Consumes: `docs/paper/figures-tables.md` 의 F2~F5, `EIP_fig/neuron_usage.py` (F2~F4), `EIP_fig/lambda_epoch.py` (F5)
+- Produces: `paper/figures/*.pdf` (F2~F4)
 
-- [ ] **Step 1: F1 을 쓴다** — 가중 설계 19종의 정확도–스파이크 산점도와 단일 적합 곡선.
-**축은 실제 정확도와 실제 스파이크 수다.**
+**2026-09-14 task-13b 갱신 — 이 태스크가 만들었던 파레토 곡선 그림 스크립트
+(삭제됨, 옛 경로 `EIP_fig/` 아래)와 그 출력 PDF 는 그 뒤 재검증(유효 가중 설계가 애초
+문서가 적던 수보다 적고, 탐색이 논문 범위 밖 VGG16-CIFAR10 뿐)으로 폐기됐다. 스크립트와
+PDF 모두 삭제했고 다시 만들지 않는다 (spec §2 A8, `figures-tables.md`). 아래 원래 Step 1 은
+이미 실행됐던 내용의 기록으로만 남긴다 — 재현하지 않는다.**
 
-**데이터 위치 (2026-09-14 확인):** `/media/hdd1/kyccj/EIP/archive` 에는 571개 디렉토리가 있지만
-**`train.log` 가 있는 것은 15개뿐**이다. 이전 때 체크포인트와 `reg_detail.csv`(423개)만 옮겼고
-`train.log` 는 저장소에 남았다. 정확도·스파이크는 `train.log` 에서 나오므로 **저장소 쪽을 본다**:
-
-```bash
-find . -maxdepth 3 -name train.log | wc -l     # 100개
-```
-`_sweep_wta_rev*`, `_rho_*`, `_grp_*`, `_vm*`, `_chwise`, `_pnorm`, `_maxnorm*` 계열이
-가중 설계 19종에 해당한다. 방법별 대표점을 고르는 기준(어떤 λ 를 대표로 쓸지)을
-`docs/paper/figures-tables.md` 에 먼저 적고 그림을 그린다.
+~~- [ ] Step 1: 파레토 곡선 그림을 쓴다 — 가중 설계 다수의 정확도–스파이크 산점도와 단일 적합 곡선~~
+(폐기, 위 갱신 참조)
 
 - [ ] **Step 2: 그림을 PDF 로 내보낸다** (LaTeX 는 벡터가 낫다). `plt.savefig(..., format='pdf')`.
 - [ ] **Step 3: §4.5 본문을 쓴다.** 개요 Step 4 의 두 한계 문장을 **반드시** 포함한다.
 - [ ] **Step 4: 검증**
 
 ```bash
-cd EIP_fig && /home/kyccj/anaconda3/envs/venv_1/bin/python pareto_curve.py && \
-ls -la /home/kyccj/PycharmProjects/TensorFlow-SNNs/paper/figures/
 make -C /home/kyccj/PycharmProjects/TensorFlow-SNNs/paper
 ```
 

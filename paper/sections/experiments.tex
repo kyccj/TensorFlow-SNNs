@@ -210,51 +210,11 @@ dataset, neither of which is available yet.
 \subsection{What changes inside the network}
 \label{sec:exp-analysis}
 
-The main result (Table~\ref{tab:t1_main}) and the weighting-design search
-behind it both land on the same accuracy-spike curve -- a point on that
-curve does not identify which neurons are firing. This section asks what
-differs underneath a matched point on the curve.
-
-\paragraph{Many weighting designs, one curve.}
-Figure~\ref{fig:f1_pareto} tests 13 weighting designs against the
-unregularised baseline (14 points in total), covering softmax- and
-max-based normalisation, an entropy-based weighting, a continuous $p$-norm
-interpolation between the two, a constant (undifferentiated) coefficient,
-grouped variants that normalise within a channel instead of over the whole
-layer, an added term that pushes winning neurons to fire more, and a
-per-layer weighting by synaptic-operation cost instead of raw spike count
--- the same design space referenced in spec \S 2 A8. Every design we could
-recover a validated run for (310 completed epochs and $S_{30}/S_1 \geq
-0.19$, spec \S 12-1) lands within run-to-run noise of a single fitted
-curve ($R^2=0.52$, $n=14$); we found no valid run for a $\beta$-sharpness
-sweep, a legacy row-wise weighting, or a norm-of-sum accumulation variant,
-each of which failed the same pre-registered selection rule on every
-attempt, and we exclude a flat-weight control that passed the rule but
-collapsed to 24--31\% accuracy rather than following the curve, since it
-is a diagnostic control for the grouping structure and not one of the
-weighting designs under test. This combination of designs was swept on
-VGG16/CIFAR-10, not the ResNet-19/CIFAR-10 combination used elsewhere in
-this section: the design-space search that produced this variety predates
-the ResNet-19 experiments, and mixing two architectures with different
-accuracy ceilings on one plot would make the single-curve claim
-meaningless on real axes. Landing on the same curve does not mean landing
-in the same internal state, which is what the rest of this section
-measures on ResNet-19/CIFAR-10 at matched spike counts.
-
-\begin{figure*}[t]
-\centering
-\includegraphics[width=0.75\linewidth]{figures/f1_pareto_curve.pdf}
-\caption{Validation accuracy against spike count (both axes are the raw
-measured values, not normalised) for 13 spike-count weighting designs plus
-the unregularised baseline, VGG16/CIFAR-10. Each point is the highest-accuracy
-validated run for that design (selection rule: spec \S 12-1 completion and
-$S_{30}/S_1$ filter, then the highest validation accuracy among the runs
-that pass it). The dashed line is a single log-linear fit across all 14
-points, with no per-design offset term -- the fit is deliberately naive:
-its purpose is to show that the points do not separate into distinguishable
-curves, not to model any one design precisely.}
-\label{fig:f1_pareto}
-\end{figure*}
+The main result (Table~\ref{tab:t1_main}) shows that the proposed
+regulariser matches baseline accuracy at a much lower spike count -- a
+single point on the accuracy-spike curve, which does not by itself
+identify which neurons are firing. This section asks what differs
+underneath a matched point on the curve.
 
 \paragraph{The same spike budget, a different number of active neurons.}
 On ResNet-19/CIFAR-10, at matched spike counts, the proposed regulariser
