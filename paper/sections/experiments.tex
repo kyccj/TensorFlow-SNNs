@@ -54,9 +54,9 @@ for this table without a separate re-freeze decision.
 
 \paragraph{Spike counting.} Every spike count reported in this section uses
 the eval/test protocol. The same model produces a different spike count in
-training mode (up to $1.41\times$ higher); training-mode counts are used
-only for the early-collapse check in rule (2) above, never in a reported
-table.
+training mode; the magnitude of this difference is measured in \S\ref{sec:exp-analysis},
+where training-mode counts are necessarily used. Training-mode counts are used
+only for the early-collapse check in rule (2) above, never in a reported table.
 
 \paragraph{Reporting.} Tables report the epoch with the best validation
 accuracy for each run. Column order is fixed throughout: train loss, train
@@ -224,9 +224,8 @@ with per-neuron logging that pass the pre-registered completion and
 $S_{30}/S_1 \geq 0.19$ filter (spec \S 12-1, rule 3's top-4 cap is not
 applied here -- it standardises a reporting table's $n$, not a
 regression's), a regression of log active neurons on log spike count and
-method gives a coefficient of $0.869$ ($t=-21.5$, $n=21$): at a
-given spike count, the proposed regulariser activates $13.1\%$ fewer
-neurons than Plain $L_2$. This is a fitted relationship over the whole
+method gives a coefficient whose exponentiated form is $0.869$ ($t=-21.5$, $n=21$): the method term multiplies active-neuron count by $0.869$, a $13.1\%$ reduction at a
+given spike count. This is a fitted relationship over the whole
 sample, not a statement about any one pair of runs. Separately, the
 closest-landing pair we have -- Plain $L_2$ at 193,083 spikes with
 155,669 active neurons, the proposed regulariser at 193,129 spikes with

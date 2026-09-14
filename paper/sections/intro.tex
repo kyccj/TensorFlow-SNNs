@@ -37,8 +37,8 @@ here) --- but the same point on that curve does not mean the same internal state
 spike reduction is mostly neuron silencing was made first by Activity Pruning
 (NeurIPS 2025) \cite{bu2025activity}; what we add is that \emph{which} neurons are
 silenced differs by method. Regressing log active-neuron count on log spike count and
-method (coefficient 0.869, $t=-21.5$, $n=21$) shows that at matched spike budgets, our
-regulariser uses 13.1\% fewer active neurons. The nearest spike-matched pair makes the
+method shows that the method term multiplies active-neuron count by $0.869$, a $13.1\%$ reduction
+($t=-21.5$, $n=21$), at matched spike budgets. The nearest spike-matched pair makes the
 same point directly, though it is a separate, single-pair measurement and not what the
 regression explains: at 193,129 spikes our regulariser uses 131,641 neurons, against
 193,083 spikes and 155,669 neurons for the layer-wise $L_2$ penalty --- a 15.4\%

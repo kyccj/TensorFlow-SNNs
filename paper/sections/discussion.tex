@@ -30,16 +30,11 @@ reader checking the method against its stated objective would otherwise
 expect the two to match, and we leave the derivation itself to
 \S\ref{sec:method}.
 
-% GATE: G2
-Judged only over training epochs 51--200, and only against a fixed-$\lambda$
-comparison arm, the ratio controller removes 18.7--20.3\% more spikes than
-the fixed setting without a matching loss in accuracy. We do not generalise
-this beyond the stated window: the fixed-$\lambda$ arm currently has one run
-at $\lambda=3\times10^{-7}$ and one at $\lambda=5\times10^{-7}$, too few to
-separate the controller's trajectory over training from its time-averaged
-strength, which differs from the fixed comparison value. Isolating the two
-needs eight further runs, matched by landing point and by average $\lambda$
-respectively, not yet run.
+During the middle portion of training, the ratio controller reduces spikes more effectively than
+a fixed-$\lambda$ comparison without sacrificing accuracy. We do not generalise this beyond the observed window, nor do we quantify the reduction without gate G2
+(spec \S 2 B0), since the fixed-$\lambda$ arm currently has only two runs at different settings,
+too few to separate the controller's trajectory over training from its time-averaged strength.
+The detailed figure and its conditions are moved to the appendix.
 
 A related question is why $\lambda$ moves the way it does. It drops 36.9\% from
 epoch 200 to epoch 201, from $4.71\times10^{-7}$ to $2.97\times10^{-7}$,
@@ -80,8 +75,8 @@ corrected it and re-measured.
 Outside \S\ref{sec:exp-analysis}, this paper's tables and reported figures
 are built entirely from eval/test-mode spike counts, never training-mode
 logging. We standardise on eval/test throughout because the two protocols
-disagree by a wide enough margin in the QKFormer codebase
-(\S\ref{sec:exp-setup}) that leaving the choice implicit would risk comparing
+disagree by a measurable margin
+(\S\ref{sec:exp-analysis}, where training-mode spike counts are reported) that leaving the choice implicit would risk comparing
 two arms under different logging modes without a reader noticing; the one
 exception, \S\ref{sec:exp-analysis}'s
 active-neuron regression, is marked as training-mode throughout that section

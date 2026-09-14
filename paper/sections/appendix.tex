@@ -21,3 +21,14 @@ appendix that omits it is worth less than none.
 \label{sec:appendix-intensity}
 
 \input{figures/f5_intensity}
+
+\subsection{Ratio controller trajectory during training}
+\label{sec:appendix-trajectory}
+
+% GATE: G2
+Over training epochs 51--200, the proposed ratio controller reduces spike count by
+18.7--20.3\% more than a fixed-$\lambda$ setting without a matching loss in accuracy.
+The fixed-$\lambda$ comparison arm has $n=1$ at $\lambda=3\times10^{-7}$ and $n=1$ at
+$\lambda=5\times10^{-7}$, making these figures insufficient to separate the controller's
+effect from sampling variation. Gate G2 (spec \S 2 B0) requires additional runs before
+this comparison can be moved to the main body.
