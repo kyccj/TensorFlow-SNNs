@@ -153,3 +153,25 @@
        (+0.642)과 구별되지 않았다 — 의도한 WTA 는 생기지 않았다. 이 소절은 왜 이 설계를
        시도했는지만 적고, "생기지 않았다"는 판정은 §5 에서 명시한다.
 [분량] 2단 기준 4~5줄. 넘치면 §1 P1 으로 흡수하고 소절을 없앤다.
+
+## §4.1 Experimental setup
+
+- 모델: ResNet-19 (tdBN), Spikformer, SDT-V3 173M — **VGG-16 제외** (스펙 §1, 전 데이터셋)
+- 데이터셋: CIFAR-10 (주력, `_paper/` 에 축적), CIFAR-100 (조건당 n=1, 보강 필요),
+  CIFAR10-DVS (제안법 재실행 필요), SDT-V3 는 173M 대형 모델을 별도 서버에서 검증 예정
+- 학습 설정 (전 팔 공통): T=4, 310 에폭, 배치 100, AdamW + 코사인 LR, weight decay 2e-2,
+  label smoothing 0.1, RandAugment + CutMix + RandomErasing (CutMix 는 ep200 종료),
+  tdBN, 대리 기울기 `asym` (ResNet bias 0.8 / VGG16·Spikformer 0.6). `asym` 은 우리 기여가
+  아니라 저장소 기존 설정이며 전 팔에 동일 적용된다. 런 1개 ≈ 31시간 (baseline 27.2h), GPU 0~5 만 사용
+- 비교군: 규제 없음(base) / plain L2(l2) / 1−softmax(sm) / 제안법(prop).
+  [내부용, 본문 반입 금지] G4 완료 시 `l2 + loss-ratio` 대조군을 추가한다
+- 시드: 쓰지 않는다 — 시드를 고정하면 tf.data 가 매 에폭 같은 증강 순서를 재생해 정확도가
+  96.65 → 95.72 로, 분산은 8배로 나빠진다 (`_paper_bad_seeded/`, 커밋 bb3633f)
+- 사전 등록 배제 규칙 (제안법·비교군 대칭 적용): (1) 310에폭 미완주 (2) S30/S1 < 0.19
+  (3) 그래도 5개 남으면 val_acc 상위 4개. 판정은 `collect_paper.py` 가 한다
+- 보고: 최고 val_acc 시점의 행. 조건당 5런을 목표로 하고 위 규칙으로 선별한 n=4 를 평균으로
+  보고한다 (반복 런은 개별 행을 모두 보이고 그룹 바로 아래에 평균 행). 전 런 기록(돌린 개수·
+  선별된 것·배제 사유)은 부록 표 T7
+- 스파이크 수: 표는 전부 **eval/test 프로토콜**로 통일한다. 같은 모델이라도 학습(train) 모드
+  스파이크 수는 최대 1.41배 다르므로 논문 표에 쓰지 않는다 — 학습 모드 S30/S1 은 조기 선별에만 쓴다
+- 표 열 순서 (사용자 지시): train loss → train acc → val loss → val acc → spikes
