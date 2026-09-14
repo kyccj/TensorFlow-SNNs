@@ -654,6 +654,13 @@ git commit -m "paper: record outline review and approval gate"
 
 ## Phase C — 영문 LaTeX 초고
 
+> **빌드 검증 대체 (2026-09-14).** 이 머신에 LaTeX 엔진이 없다 — pdflatex·bibtex·xelatex·
+> lualatex·tectonic·latexmk 전부 부재, texlive 패키지 0개. 사용자가 TeX Live 를 설치하기로
+> 했으나 그 전까지 Task 9~14 의 `make -C paper` 는 **`python paper/texcheck.py paper` 로
+> 대체한다** — 중괄호·`$`·환경 균형, `\cite` 키의 refs.bib 존재, `\input` 대상 존재를 본다.
+> **이것은 컴파일이 아니다.** 설치가 끝나면 Task 15 에서 `make -C paper` 와
+> `pdfinfo main.pdf | grep Pages` 로 전 절을 한 번에 재검증한다. 8쪽 제약은 그때까지 미확인이다.
+
 ### Task 8: paper/ 스캐폴딩
 
 **Files:**
