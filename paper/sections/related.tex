@@ -1,3 +1,94 @@
 \section{Related Work}
 \label{sec:related}
-% TODO: Task 10
+
+\subsection{Direct training of deep SNNs}
+Surrogate-gradient methods make direct training of deep SNNs practical by
+replacing the non-differentiable spike function with a smooth surrogate during
+the backward pass \cite{wu2018spatio,neftci2019surrogate,wu2019direct}.
+Subsequent work stabilises this training with threshold-dependent batch
+normalisation and improved surrogate shapes
+\cite{zheng2021going,deng2022temporal,fang2021incorporating}. We do not propose
+a new training method: we inherit ResNet-19 with threshold-dependent batch
+normalisation and $T{=}4$ directly from this line and study what happens to
+the spikes it produces after training.
+
+\subsection{Spike-count regularisation}
+A separate line adds a spike-count term to the training loss to push firing
+down \cite{neil2016learning,sorbaro2020optimizing,pellegrini2021low,meda2022improving,sakemi2023sparse}.
+This is the literature basis for our comparison arm: the layer-wise $L_2$
+penalty we compare against throughout this paper is this family's
+representative case, with primary support from Neil et al., Sorbaro et al.,
+and Pellegrini et al.\ \cite{neil2016learning,sorbaro2020optimizing,pellegrini2021low}.
+Sorbaro et al.\ fix a static $\alpha=1/S_0^2$ before training and instead
+sweep an absolute SynOps target by hand across 30 models
+\cite{sorbaro2020optimizing}. All of these methods share one objective ---
+reduce total spike count --- and express no preference over \emph{which}
+neurons fire less; applied as a layer-wise $L_2$ penalty, this makes neurons
+that barely cross threshold stop firing while leaving strongly-firing and
+already-silent neurons untouched, a structural byproduct rather than a design
+choice. They also hand-set their strength coefficient and vary only what is
+penalised (total count vs.\ SynOps). Our experiments show that \emph{what} is
+penalised does not change the resulting accuracy-spike curve, and open a
+different axis instead: at the same point on that curve, the internal state
+differs.
+
+\subsection{Pruning and activity-based sparsification}
+We address a case of anticipation directly, because our own mechanistic
+analysis independently arrived at the same framing --- that this is, in
+effect, activity-based pruning
+\cite{bu2025activity,li2024spiking,yao2023inherent}. Activity Pruning
+(NeurIPS 2025) adds a per-layer spike count to the training loss during
+training itself, not as a post-hoc prune-and-retrain step, and adapts the
+firing threshold from membrane potential; it already states that spike
+reduction is mostly neuron silencing and that existing activity
+regularisation has structural limitations \cite{bu2025activity}. We concede
+both points: they are a confirmation of a prior observation rather than our
+contribution, and Section~\ref{sec:intro} reports the neuron-count evidence
+behind it. What we add is threefold: (1) equivalence across 19 per-neuron
+weighting designs for the spike-count penalty, (2) a difference in which
+neurons remain active at a matched spike budget, and (3) a strength
+coefficient that, unlike Activity Pruning's own per-dataset configuration
+values (Section~\ref{sec:intro}), is not hand-set for every new
+dataset-architecture combination.
+
+\subsection{Balancing auxiliary loss terms}
+Outside the SNN literature, a separate line automatically sets the weight of
+an auxiliary loss term
+\cite{chen2018gradnorm,kendall2018multitask,franke2024improving}: GradNorm
+learns a per-task weight at every step via gradient-norm equalisation
+(requiring an added parameter) \cite{chen2018gradnorm}; Kendall et al.\ learn
+it as a homoscedastic-uncertainty parameter (requiring a probabilistic model)
+\cite{kendall2018multitask}; Franke et al.\ enforce a per-parameter-matrix
+upper bound via an augmented-Lagrangian multiplier (requiring that bound be
+specified) \cite{franke2024improving}. All three balance several task losses
+and require either a learned parameter or a pre-specified target; we instead
+fix a single ratio between the task loss and the regularisation term.
+% GATE: G4 -- the following sentence depends on the l2 + loss-ratio control
+% run (not yet executed as of 2026-09-14). If G4 remains unmet, relocate this
+% entire subsection out of Section 2 into the Discussion section instead of
+% publishing it here.
+This tentatively distinguishes our approach from Sorbaro et al.'s static
+$1/S_0^2$ and Activity Pruning's hand-set coefficients, pending a control that
+applies the same ratio controller to the layer-wise $L_2$ penalty.
+
+\subsection{Energy accounting and neuromorphic deployment}
+Reporting efficiency through a SynOps$\times$pJ accounting scheme is standard
+practice for comparing SNN designs before deployment
+\cite{horowitz2014computing,lemaire2022analytical,yao2024spikebased}. We use
+this accounting not as a target for criticism but as a comparison baseline:
+we apply the standard formula unchanged and place a hardware measurement
+alongside it.
+% GATE: G7 -- no Speck hardware measurements exist as of 2026-09-14. Uncomment
+% once available; until then, only the accounting-convention framing above is
+% published.
+% We validate the resulting neuron-usage gain with measurements on Speck
+% neuromorphic hardware \cite{yao2024spikebased}.
+
+\subsection{Lateral inhibition and WTA in SNNs}
+Winner-take-all dynamics from lateral inhibition motivated this study's
+original design \cite{cheng2020lisnn}. We cite this line only to describe
+design intent, not a result: our measured inhibition correlation, $+0.61$ to
+$+0.69$, is indistinguishable from a uniform-weighting control at $+0.642$,
+so the winner-take-all behaviour we set out to induce did not materialise.
+Section~\ref{sec:discussion} states this judgement explicitly; here we record
+only why this design was attempted.
