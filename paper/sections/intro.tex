@@ -59,9 +59,9 @@ our regulariser silences some neurons outright.
 Taken together, this paper makes the following contributions.
 \begin{itemize}\itemsep0pt
   \item At a matched spike budget, our regulariser uses 13.1\% fewer active neurons than
-  the layer-wise $L_2$ penalty (ANCOVA coefficient 0.869, $t=-21.5$, $n=21$,
-  ResNet-19/CIFAR-10): the same point on the accuracy-spike curve does not imply the
-  same internal state.
+  the layer-wise $L_2$ penalty: the method term multiplies active-neuron count by 0.869,
+  a 13.1\% reduction ($t=-21.5$, $n=21$, ResNet-19/CIFAR-10). The same point on the
+  accuracy-spike curve does not imply the same internal state.
   % GATE: G4
   \item We set the regularisation strength through a single dimensionless ratio between
   the task loss and the regularisation term, needing neither an absolute SynOps target

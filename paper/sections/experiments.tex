@@ -17,7 +17,7 @@ the only one with enough repetitions for the comparisons below.
 size 100, AdamW with a cosine learning-rate schedule and weight decay
 $2\times10^{-2}$, tdBN, label smoothing 0.1, and RandAugment + CutMix +
 RandomErasing (CutMix disabled after epoch 200). The surrogate gradient is
-\texttt{asym} (bias 0.8 for ResNet, 0.6 for VGG-16/Spikformer); this choice
+\texttt{asym} (bias 0.8 for ResNet and Spikformer); this choice
 is inherited from the codebase, not our contribution, and is applied
 identically to every arm. One run takes approximately 31 hours (27.2h for
 the unregularised baseline).
@@ -116,7 +116,7 @@ additional runs that have not been approved, and is left as a commented
 block in the table source pending that approval.
 
 Removing the $1{-}$ inversion moves the landing point from 192K spikes
-(Ours) to 437,011 -- within 10\% of the unregularised baseline's 488,619 --
+(Ours) to 437,011 -- 10.6\% below the unregularised baseline's 488,619 --
 while $\rho$ is unchanged. We read this as evidence that the inversion is a
 precondition for the method to work at all, not a tunable strength: the gap
 is 2.3$\times$, large enough that no standard-deviation test is needed to
@@ -143,11 +143,12 @@ The rightmost column of Table~\ref{tab:t3_ablation} reports spikes per
 active neuron from a separate neuron-level extraction, whose run count
 differs from the accuracy columns and is cited per row; the sub-threshold
 and inversion ablations use $n=3$ and $n=2$ respectively, both below 4, so
-we report the count rather than inventing a standard deviation. Both
-ablations raise spikes-per-neuron above Ours' $1.4790$ ($n=11$) --
-$1.4860$ without the sub-threshold term and $1.5300$ without the inversion
--- consistent with the broader ordering in which removing regularisation
-strength raises the firing intensity per neuron. Taken together, the three
+we report the count rather than inventing a standard deviation. The
+sub-threshold and inversion ablations raise spikes-per-neuron above Ours'
+$1.4790$ ($n=11$) to $1.4860$ and $1.5300$ respectively, while removing
+the single-step application lowers it to $1.4478$. These different
+directions indicate that the ablated components have distinct effects on
+firing intensity per neuron. Taken together, the three
 columns point to two different effects: the sub-threshold term's
 contribution is on the accuracy axis, and the inversion's contribution is
 on the landing-point (concentration) axis. They are not the same effect,
@@ -329,8 +330,7 @@ the same caveat.
 % Appendix figures F5 and F6 -- same pattern as \input{tables/t8_generality}
 % above: full content lives in its own file with a live \label (so
 % \ref{fig:f5_intensity} / \ref{fig:f6_lambda} resolve once included), and
-% only the \input line here is commented out. This file has no \appendix
-% section yet to place them in (out of scope for Task 13; see
-% figures-tables.md); a future task adds \appendix and uncomments these.
+% only the \input line here is commented out. The \appendix section in
+% paper/main.tex handles placement of appendix content.
 % \input{figures/f5_intensity}   % appendix, no gate -- page budget only
 % \input{figures/f6_lambda_epoch}  % GATE: spec \S 9-B, see paper/figures/f6_lambda_epoch.tex
