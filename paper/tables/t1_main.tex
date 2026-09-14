@@ -1,0 +1,62 @@
+\begin{table}
+\centering
+\small
+\begin{tabular}{lccccc}
+\toprule
+Condition & Train loss & Train acc (\%) & Val loss & Val acc (\%) & Spikes \\
+\midrule
+No regularisation & 0.5936 & 95.74 & 0.5875 & 96.74 & 488,900 \\
+No regularisation & 0.5992 & 95.50 & 0.5878 & 96.59 & 473,761 \\
+No regularisation & 0.5882 & 96.05 & 0.5873 & 96.64 & 499,190 \\
+No regularisation & 0.6100 & 95.03 & 0.5863 & 96.60 & 486,852 \\
+No regularisation & 0.5899 & 95.90 & 0.5838 & 96.70 & 484,578 \\
+\cmidrule{1-6}
+Mean ($n=5$) & 0.5962 & 95.644 & 0.5865 & 96.654 & 486,656 \\
+\midrule
+Ours ($\rho=2\times10^{-3}$) & 0.5956 & 95.70 & 0.5914 & 96.51 & 284,367 \\
+Ours ($\rho=2\times10^{-3}$) & 0.5960 & 95.68 & 0.5866 & 96.76 & 295,673 \\
+\cmidrule{1-6}
+Mean ($n=2$) & 0.5958 & 95.690 & 0.5890 & 96.635 & 290,020 \\
+\midrule
+Ours ($\rho=3\times10^{-3}$) & 0.6063 & 95.28 & 0.5829 & 96.76 & 241,106 \\
+Ours ($\rho=3\times10^{-3}$) & 0.6053 & 95.32 & 0.5915 & 96.63 & 237,609 \\
+Ours ($\rho=3\times10^{-3}$) & 0.6012 & 95.47 & 0.5872 & 96.79 & 236,966 \\
+Ours ($\rho=3\times10^{-3}$) & 0.6093 & 95.16 & 0.5942 & 96.42 & 227,528 \\
+\cmidrule{1-6}
+Mean ($n=4$) & 0.6055 & 95.308 & 0.5889 & 96.650 & 235,802 \\
+\midrule
+Ours ($\rho=4\times10^{-3}$) & 0.6043 & 95.38 & 0.5893 & 96.71 & 194,747 \\
+Ours ($\rho=4\times10^{-3}$) & 0.5997 & 95.62 & 0.5899 & 96.51 & 191,493 \\
+Ours ($\rho=4\times10^{-3}$) & 0.6169 & 94.77 & 0.5939 & 96.49 & 192,965 \\
+Ours ($\rho=4\times10^{-3}$) & 0.6005 & 95.55 & 0.5952 & 96.53 & 188,208 \\
+Ours ($\rho=4\times10^{-3}$) & 0.6092 & 95.16 & 0.5905 & 96.69 & 193,048 \\
+\cmidrule{1-6}
+Mean ($n=5$) & 0.6061 & 95.296 & 0.5918 & 96.586 & 192,092 \\
+\midrule
+Plain $L_2$ ($\lambda=1\times10^{-7}$) & 0.5941 & 95.92 & 0.5892 & 96.67 & 324,390 \\
+\midrule
+Plain $L_2$ ($\lambda=2.5\times10^{-7}$) & 0.6123 & 95.24 & 0.5959 & 96.67 & 246,555 \\
+Plain $L_2$ ($\lambda=2.5\times10^{-7}$) & 0.6103 & 95.39 & 0.5953 & 96.58 & 250,957 \\
+Plain $L_2$ ($\lambda=2.5\times10^{-7}$) & 0.6117 & 95.33 & 0.5983 & 96.49 & 246,038 \\
+Plain $L_2$ ($\lambda=2.5\times10^{-7}$) & 0.6085 & 95.47 & 0.5992 & 96.46 & 243,908 \\
+\cmidrule{1-6}
+Mean ($n=4$) & 0.6107 & 95.357 & 0.5972 & 96.550 & 246,865 \\
+\midrule
+Plain $L_2$ ($\lambda=5\times10^{-7}$) & 0.6190 & 95.30 & 0.6060 & 96.38 & 190,139 \\
+Plain $L_2$ ($\lambda=5\times10^{-7}$) & 0.6163 & 95.42 & 0.6004 & 96.64 & 185,949 \\
+Plain $L_2$ ($\lambda=5\times10^{-7}$) & 0.6175 & 95.40 & 0.6068 & 96.47 & 182,124 \\
+Plain $L_2$ ($\lambda=5\times10^{-7}$) & 0.6172 & 95.36 & 0.6052 & 96.52 & 181,563 \\
+Plain $L_2$ ($\lambda=5\times10^{-7}$) & 0.6169 & 95.42 & 0.6080 & 96.44 & 187,911 \\
+\cmidrule{1-6}
+Mean ($n=5$) & 0.6174 & 95.380 & 0.6053 & 96.490 & 185,537 \\
+\midrule
+1-softmax ($\lambda=1\times10^{-7}$) & 0.6002 & 95.58 & 0.5933 & 96.48 & 196,645 \\
+1-softmax ($\lambda=1\times10^{-7}$) & 0.5987 & 95.66 & 0.5943 & 96.53 & 195,139 \\
+1-softmax ($\lambda=1\times10^{-7}$) & 0.5954 & 95.80 & 0.5918 & 96.53 & 192,042 \\
+\cmidrule{1-6}
+Mean ($n=3$) & 0.5981 & 95.680 & 0.5931 & 96.513 & 194,609 \\
+\bottomrule
+\end{tabular}
+\caption{ResNet-19 / CIFAR-10, best-val\_acc epoch, eval/test spike counts. Repeated runs show every individual run with the group mean directly below (pre-registered selection rules, spec \S 2 A1/\S 12-1).}
+\label{tab:t1_main}
+\end{table}

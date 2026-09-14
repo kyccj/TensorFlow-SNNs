@@ -1,0 +1,53 @@
+# T1 run list (task 11) — explicit, do not glob.
+# Selection follows spec §2 A1 / §12-1: (1) must complete 310 epochs,
+# (2) S30/S1 >= 0.19, (3) if >5 remain, keep top-4 by val_acc.
+# Verified with collect_paper.py on 2026-09-14.
+
+# baseline (regularization off) — 5 runs, canonical list from spec §2 A1.
+# NOTE: `_paper/*` alone only catches 2 of these 5 — the other 3 live in
+# separate directories. `_paper/r19c10-base---s13` is intentionally excluded
+# (spec: 307-epoch run; treated as not part of the canonical 5 regardless of
+# what a fresh collect_paper.py completion check reports today).
+_paper/r19c10-base---s11
+_paper/r19c10-base---s12
+_baseline_more/base_r19_c10_run3
+_baseline_no_reg_r19_c10
+_baseline_trajectory
+
+# proposed method (prop), rho=2e-3 — only 2 runs exist, both valid (s3 failed at ep0).
+_paper/r19c10-prop-2e-3-s1
+_paper/r19c10-prop-2e-3-s2
+
+# proposed method (prop), rho=3e-3 — 4 valid of 6 (s6/s7 excluded: 14 epochs, incomplete).
+_paper/r19c10-prop-3e-3-s2
+_paper/r19c10-prop-3e-3-s3
+_paper/r19c10-prop-3e-3-s4
+_paper/r19c10-prop-3e-3-s5
+
+# proposed method (prop), rho=4e-3 — 5 of 5 valid.
+_paper/r19c10-prop-4e-3-s1
+_paper/r19c10-prop-4e-3-s2
+_paper/r19c10-prop-4e-3-s3
+_paper/r19c10-prop-4e-3-s4
+_paper/r19c10-prop-4e-3-s5
+
+# plain L2, lambda=1e-7 — only 1 run exists.
+_paper/r19c10-l2-1e-7-s1
+
+# plain L2, lambda=2.5e-7 — 4 of 5 valid (s5 excluded: 305 epochs, incomplete).
+_paper/r19c10-l2-2p5e-7-s1
+_paper/r19c10-l2-2p5e-7-s2
+_paper/r19c10-l2-2p5e-7-s3
+_paper/r19c10-l2-2p5e-7-s4
+
+# plain L2, lambda=5e-7 — 5 of 5 valid.
+_paper/r19c10-l2-5e-7-s1
+_paper/r19c10-l2-5e-7-s2
+_paper/r19c10-l2-5e-7-s3
+_paper/r19c10-l2-5e-7-s4
+_paper/r19c10-l2-5e-7-s5
+
+# 1-softmax, lambda=1e-7 — 3 of 3 valid.
+_paper/r19c10-sm-1e-7-s1
+_paper/r19c10-sm-1e-7-s2
+_paper/r19c10-sm-1e-7-s3

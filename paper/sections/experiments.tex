@@ -1,3 +1,89 @@
 \section{Experiments}
 \label{sec:experiments}
-% TODO: Tasks 11/12/13
+
+\subsection{Setup}
+\label{sec:exp-setup}
+
+\paragraph{Models and datasets.} We evaluate on ResNet-19 with
+threshold-dependent batch normalisation (tdBN), Spikformer, and SDT-V3
+(173M); VGG-16 is excluded from all datasets. The primary dataset is
+CIFAR-10, where results have accumulated to the point of statistical
+comparison; CIFAR-100 currently has one run per condition, CIFAR10-DVS
+requires a rerun with the proposed regulariser, and SDT-V3 is validated on a
+separate machine. This section reports the CIFAR-10 / ResNet-19 combination,
+the only one with enough repetitions for the comparisons below.
+
+\paragraph{Training.} All arms share $T{=}4$ time steps, 310 epochs, batch
+size 100, AdamW with a cosine learning-rate schedule and weight decay
+$2\times10^{-2}$, tdBN, label smoothing 0.1, and RandAugment + CutMix +
+RandomErasing (CutMix disabled after epoch 200). The surrogate gradient is
+\texttt{asym} (bias 0.8 for ResNet, 0.6 for VGG-16/Spikformer); this choice
+is inherited from the codebase, not our contribution, and is applied
+identically to every arm. One run takes approximately 31 hours (27.2h for
+the unregularised baseline).
+
+\paragraph{Comparison arms.} We compare four conditions: no regularisation,
+the layer-wise $L_2$ penalty (Plain $L_2$), the $1{-}$softmax weighting
+(1-softmax), and the proposed regulariser (Ours).
+
+\paragraph{Seeds.} We do not fix a global random seed. Fixing
+\texttt{run\_seed} makes \texttt{tf.data} replay the same augmentation order
+every epoch, which collapsed accuracy from 96.65\% to 95.72\% and inflated
+the run-to-run standard deviation eightfold in a control experiment; it is
+also not reproducible across GPU runs even at a fixed seed. Repeated runs
+are therefore repeated re-runs with no seed control, and the per-run tags
+(s1, s2, \ldots) are arbitrary labels, not seed identifiers.
+
+\paragraph{Pre-registered selection rules.} Applied symmetrically to the
+proposed method and every comparison arm: (1) a run is excluded if it does
+not complete all 310 epochs; (2) a run is excluded if its spike ratio
+between epoch 30 and epoch 1 in training-mode logging, $S_{30}/S_1$, falls
+below 0.19 (an early-collapse indicator); (3) if more than 5 runs remain
+after (1)-(2), only the top 4 by validation accuracy are kept. All
+comparisons target 5 runs per condition; the number retained under these
+rules is reported as $n$ in each table. Full run logs, including excluded
+runs and their exclusion reason, are in the appendix.
+
+\paragraph{Spike counting.} Every spike count reported in this section uses
+the eval/test protocol. The same model produces a different spike count in
+training mode (up to $1.41\times$ higher); training-mode counts are used
+only for the early-collapse check in rule (2) above, never in a reported
+table.
+
+\paragraph{Reporting.} Tables report the epoch with the best validation
+accuracy for each run. Column order is fixed throughout: train loss, train
+accuracy, validation loss, validation accuracy, spike count. When a
+condition has more than one run, every individual run is listed, with the
+group mean directly below.
+
+\subsection{Main result}
+\label{sec:exp-main}
+
+Table~\ref{tab:t1_main} compares the unregularised baseline against the
+proposed regulariser at three strengths ($\rho \in \{2, 3, 4\}\times
+10^{-3}$), Plain $L_2$ at three strengths ($\lambda \in \{1, 2.5,
+5\}\times10^{-7}$), and 1-softmax at $\lambda = 1\times10^{-7}$, all on
+ResNet-19 / CIFAR-10.
+
+The baseline (regularisation off, $n=5$) reaches $96.654\%$ validation
+accuracy at $486{,}656$ spikes. At $\rho=3\times10^{-3}$ ($n=4$), the
+proposed regulariser reaches $96.650\%$ at $235{,}802$ spikes --- a
+$51.5\%$ reduction in spike count with the two accuracy figures within
+$0.004$ percentage points of each other, well inside the baseline's
+run-to-run standard deviation ($0.065$). Following the pre-registered
+no-loss threshold (baseline mean minus two standard deviations, $96.524\%$
+for this combination), $96.650\%$ clears it: the spike reduction at
+$\rho=3\times10^{-3}$ comes with no measurable accuracy cost.
+
+The other conditions in Table~\ref{tab:t1_main} show where Plain $L_2$ and
+1-softmax land on the same accuracy-spike plane: Plain $L_2$ reaches
+$96.550\%$ at $246{,}865$ spikes ($\lambda=2.5\times10^{-7}$, $n=4$) and
+$96.490\%$ at $185{,}537$ spikes ($\lambda=5\times10^{-7}$, $n=5$);
+1-softmax reaches $96.513\%$ at $194{,}609$ spikes ($n=3$). We report these
+figures only to place the proposed regulariser's landing point among the
+comparison arms on the spike axis; we do not claim an accuracy ordering
+among the four conditions. The gap between the proposed regulariser and
+Plain $L_2$ at matched settings is within run-to-run noise for the sample
+sizes collected so far, and we do not assert it as an accuracy advantage.
+
+\input{tables/t1_main}
