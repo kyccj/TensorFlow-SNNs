@@ -83,6 +83,15 @@ fig.suptitle('R19-CIFAR10 — 적응 λ 와 고정 λ', fontsize=13.5, y=.955)
 p = os.path.join(OUT, 'lambda_epoch_26-09-14.png')
 fig.savefig(p, dpi=170, bbox_inches='tight')
 print('저장:', p)
+
+# F6 -- 부록, §9-B 게이트 대기 (ep201 급락과 LR 스케줄의 겹침 미확인).
+# 게이트가 열리기 전에도 PDF 는 만들어 둔다 -- \input 자체를 빼는 것으로 게이트를 지킨다
+# (paper/sections/experiments.tex 참조).
+PAPER_FIG = '/home/kyccj/PycharmProjects/TensorFlow-SNNs/paper/figures'
+os.makedirs(PAPER_FIG, exist_ok=True)
+p6 = os.path.join(PAPER_FIG, 'f6_lambda_epoch_appendix.pdf')
+fig.savefig(p6, format='pdf', bbox_inches='tight')
+print('저장:', p6)
 print(f"λ: ep1 {pl.mean(0)[0]:.2e}  ep100 {pl.mean(0)[99]:.2e}  ep200 {pl.mean(0)[199]:.2e}  "
       f"ep201 {pl.mean(0)[200]:.2e}  ep310 {pl.mean(0)[309]:.2e}  시간평균 {pl.mean():.2e}")
 print(f"최종 val_acc: 제안법 {pv.mean(0)[309]:.2f} / " +

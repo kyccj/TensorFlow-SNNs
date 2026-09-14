@@ -166,3 +166,79 @@ fig.savefig(p1, dpi=170, bbox_inches='tight')
 print('저장:', p1)
 print(f"회귀: 비율 {ratio:.4f}  SE {se:.4f}  t {b[2]/se:.1f}  n={len(Y)}")
 print(f"쌍: prop S={P['S']:.0f} A={P['A']:.0f} | l2 S={L['S']:.0f} A={L['A']:.0f}")
+
+# ── 논문용 PDF 3장 -- 기존 2x2 조합(fig)은 그대로 두고, 본문/부록 배치에 맞게
+# 패널을 다시 그린다 (계산된 배열 runs/P/L/B/lay/x/ratio/se/b 를 그대로 재사용,
+# 새 데이터 추출 없음 -- Task 13 브리프의 "포크하지 않는다" 를 같은 파일 안
+# 재사용으로 지킨다). PAPER_FIG 가 없으면(다른 환경) 저장을 건너뛴다.
+PAPER_FIG = '/home/kyccj/PycharmProjects/TensorFlow-SNNs/paper/figures'
+os.makedirs(PAPER_FIG, exist_ok=True)
+
+# F4 -- (a) 단독, 본문
+fig4, ax4 = plt.subplots(figsize=(5.2, 4.2))
+for k in ('base', 'l2', 'sm', 'prop'):
+    if k not in runs: continue
+    lab, c, mk = METH[k]
+    Sk = np.array([r['S'] for r in runs[k]]); Ak = np.array([r['A'] for r in runs[k]])
+    ax4.scatter(Sk/1e3, Ak/1e3, c=c, marker=mk, s=46, label=f'{lab} (n={len(Sk)})',
+                edgecolor='white', linewidth=.6, zorder=3)
+ax4.plot(np.exp(xs)/1e3, np.exp(b[0]+b[1]*xs+b[2])/1e3, color=METH['prop'][1], lw=1.4, zorder=2)
+ax4.plot(np.exp(xs)/1e3, np.exp(b[0]+b[1]*xs)/1e3,       color=METH['l2'][1],  lw=1.4, zorder=2)
+ax4.set_xlabel('스파이크 수 (천)'); ax4.set_ylabel('활성 뉴런 수 (천)')
+ax4.set_title(f'같은 스파이크 예산에서 쓰는 뉴런 수\n'
+              f'제안법 = plain L2 × {ratio:.3f} ({100*(ratio-1):+.1f}%),  t={b[2]/se:.1f}', fontsize=10.5)
+ax4.legend(fontsize=8.5, loc='upper left'); ax4.grid(alpha=.25)
+fig4.tight_layout()
+p4 = os.path.join(PAPER_FIG, 'f4_active_neurons.pdf')
+fig4.savefig(p4, format='pdf', bbox_inches='tight')
+print('저장:', p4)
+
+# F2+F3 -- (c)+(d) 두 패널 합본, 본문
+fig23, (axc, axd) = plt.subplots(1, 2, figsize=(10.4, 4.4))
+for r, k in ((B, 'base'), (L, 'l2'), (P, 'prop')):
+    axc.plot(x, [r['gini'][l] for l in lay], marker=METH[k][2], color=METH[k][1],
+             label=METH[k][0], lw=1.5, ms=4.5)
+axc.set_xticks(x); axc.set_xticklabels([l.replace('_conv1_n','').replace('_out_n','·out')
+                                        .replace('_conv_n','').replace('_n','') for l in lay],
+                                       rotation=60, ha='right', fontsize=7.5)
+axc.set_ylabel('지니 계수 (뉴런 간 불균등)')
+axc.set_title(f'(F2) 층별 발화 불균등\n{pair}', fontsize=10.5)
+axc.legend(fontsize=8.5); axc.grid(alpha=.25)
+
+for r, k in ((B, 'base'), (L, 'l2'), (P, 'prop')):
+    axd.plot(x, [r['top10'][l] for l in lay], marker=METH[k][2], color=METH[k][1],
+             label=METH[k][0], lw=1.5, ms=4.5)
+axd.set_xticks(x); axd.set_xticklabels([l.replace('_conv1_n','').replace('_out_n','·out')
+                                        .replace('_conv_n','').replace('_n','') for l in lay],
+                                       rotation=60, ha='right', fontsize=7.5)
+axd.set_ylabel('상위 10% 뉴런의 스파이크 점유')
+axd.set_title('(F3) 소수 뉴런에 얼마나 몰리나', fontsize=10.5)
+axd.legend(fontsize=8.5); axd.grid(alpha=.25)
+fig23.tight_layout()
+p23 = os.path.join(PAPER_FIG, 'f2_f3_gini_top10.pdf')
+fig23.savefig(p23, format='pdf', bbox_inches='tight')
+print('저장:', p23)
+
+# F5 -- (b) 단독, 부록
+fig5, ax5 = plt.subplots(figsize=(5.0, 4.2))
+ks = [k for k in ('base', 'sm', 'l2', 'prop') if k in runs]
+vals = [np.array([r['S']/r['A'] for r in runs[k]]) for k in ks]
+pos = np.arange(len(ks))
+ax5.bar(pos, [v.mean() for v in vals],
+        yerr=[v.std(ddof=1) if len(v) > 1 else 0 for v in vals],
+        color=[METH[k][1] for k in ks], width=.6, capsize=4, alpha=.9)
+for i, v in enumerate(vals):
+    ax5.scatter(np.full(len(v), i) + np.random.uniform(-.13, .13, len(v)), v,
+                c='white', edgecolor='black', s=18, zorder=3, linewidth=.6)
+    top = max(v.max(), v.mean() + (v.std(ddof=1) if len(v) > 1 else 0))
+    ax5.text(i, top + .022, f'{v.mean():.3f}', ha='center', fontsize=9.5, fontweight='bold')
+t_b, p_b = stats.ttest_ind(np.array([r['S']/r['A'] for r in runs['prop']]),
+                            np.array([r['S']/r['A'] for r in runs['l2']]), equal_var=False)
+ax5.set_xticks(pos); ax5.set_xticklabels([f'{METH[k][0]}\n(n={len(runs[k])})' for k in ks], fontsize=9.5)
+ax5.set_ylabel('스파이크 / 활성 뉴런'); ax5.set_ylim(1.0, 1.78)
+ax5.set_title(f'(F5) 살아남은 뉴런이 얼마나 세게 쏘나\n제안법 − plain L2: t={t_b:.1f},  p={p_b:.1e}', fontsize=10.5)
+ax5.grid(alpha=.25, axis='y')
+fig5.tight_layout()
+p5 = os.path.join(PAPER_FIG, 'f5_intensity_appendix.pdf')
+fig5.savefig(p5, format='pdf', bbox_inches='tight')
+print('저장:', p5)

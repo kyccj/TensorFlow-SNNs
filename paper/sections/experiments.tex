@@ -206,3 +206,148 @@ dataset, neither of which is available yet.
 
 % \input{tables/t8_generality}  % GATE: G3,G6,G8 -- drafted, kept out of the
 %   main body until a gate opens; see paper/tables/t8_generality.tex.
+
+\subsection{What changes inside the network}
+\label{sec:exp-analysis}
+
+The main result (Table~\ref{tab:t1_main}) and the weighting-design search
+behind it both land on the same accuracy-spike curve -- a point on that
+curve does not identify which neurons are firing. This section asks what
+differs underneath a matched point on the curve.
+
+\paragraph{Many weighting designs, one curve.}
+Figure~\ref{fig:f1_pareto} tests 13 weighting designs against the
+unregularised baseline (14 points in total), covering softmax- and
+max-based normalisation, an entropy-based weighting, a continuous $p$-norm
+interpolation between the two, a constant (undifferentiated) coefficient,
+grouped variants that normalise within a channel instead of over the whole
+layer, an added term that pushes winning neurons to fire more, and a
+per-layer weighting by synaptic-operation cost instead of raw spike count
+-- the same design space referenced in spec \S 2 A8. Every design we could
+recover a validated run for (310 completed epochs and $S_{30}/S_1 \geq
+0.19$, spec \S 12-1) lands within run-to-run noise of a single fitted
+curve ($R^2=0.52$, $n=14$); we found no valid run for a $\beta$-sharpness
+sweep, a legacy row-wise weighting, or a norm-of-sum accumulation variant,
+each of which failed the same pre-registered selection rule on every
+attempt, and we exclude a flat-weight control that passed the rule but
+collapsed to 24--31\% accuracy rather than following the curve, since it
+is a diagnostic control for the grouping structure and not one of the
+weighting designs under test. This combination of designs was swept on
+VGG16/CIFAR-10, not the ResNet-19/CIFAR-10 combination used elsewhere in
+this section: the design-space search that produced this variety predates
+the ResNet-19 experiments, and mixing two architectures with different
+accuracy ceilings on one plot would make the single-curve claim
+meaningless on real axes. Landing on the same curve does not mean landing
+in the same internal state, which is what the rest of this section
+measures on ResNet-19/CIFAR-10 at matched spike counts.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.75\linewidth]{figures/f1_pareto_curve.pdf}
+\caption{Validation accuracy against spike count (both axes are the raw
+measured values, not normalised) for 13 spike-count weighting designs plus
+the unregularised baseline, VGG16/CIFAR-10. Each point is the highest-accuracy
+validated run for that design (selection rule: spec \S 12-1 completion and
+$S_{30}/S_1$ filter, then the highest validation accuracy among the runs
+that pass it). The dashed line is a single log-linear fit across all 14
+points, with no per-design offset term -- the fit is deliberately naive:
+its purpose is to show that the points do not separate into distinguishable
+curves, not to model any one design precisely.}
+\label{fig:f1_pareto}
+\end{figure*}
+
+\paragraph{The same spike budget, a different number of active neurons.}
+On ResNet-19/CIFAR-10, at matched spike counts, the proposed regulariser
+uses fewer active neurons than Plain $L_2$. Across the full set of runs
+with per-neuron logging, a regression of log active neurons on log spike
+count and method gives a coefficient of $0.869$ ($t=-21.5$, $n=21$): at a
+given spike count, the proposed regulariser activates $13.1\%$ fewer
+neurons than Plain $L_2$. This is a fitted relationship over the whole
+sample, not a statement about any one pair of runs. Separately, the
+closest-landing pair we have -- Plain $L_2$ at 193,083 spikes with
+155,669 active neurons, the proposed regulariser at 193,129 spikes with
+131,641 active neurons, a $15.4\%$ difference -- illustrates the same
+direction at a single matched point, but the regression is the evidence
+for the general claim; the pair is not offered as proof of it.
+Figure~\ref{fig:f4_active} plots this relationship across the full spike
+range: the two fitted lines run parallel rather than crossing, so the gap
+in active-neuron count is not an artefact of the particular budget these
+two runs happen to share.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.7\linewidth]{figures/f4_active_neurons.pdf}
+\caption{Active neurons against spike count, ResNet-19/CIFAR-10, for the
+unregularised baseline, Plain $L_2$, 1-softmax, and the proposed
+regulariser. Lines are a common-slope log-log fit (Ours vs.\ Plain $L_2$);
+both axes are raw counts. The two fitted lines are parallel across the
+whole spike range shown, not only at the single closest-landing pair
+quoted in the text.}
+\label{fig:f4_active}
+\end{figure*}
+
+\paragraph{Why fewer neurons: per-neuron firing intensity.}
+Spikes per active neuron orders the four conditions as unregularised
+$1.621$ $>$ Ours $1.479$ $>$ 1-softmax $1.370$ $>$ Plain $L_2$ $1.284$
+(Ours vs.\ Plain $L_2$: $t=10.5$, $p=8.4\times10^{-7}$). Turning on any of
+these regularisers lowers how hard each surviving neuron fires, and the
+proposed regulariser lowers it the least: it cuts total spikes mainly by
+reducing how many neurons fire at all, while Plain $L_2$ cuts total spikes
+by weakening every neuron's firing more uniformly. This is offered as a
+mechanistic reading of the neuron-count gap above, not as a second,
+independent accuracy claim.
+
+\paragraph{Where the concentration happens.}
+Layer-by-layer, the proposed regulariser concentrates spikes onto fewer
+neurons more than Plain $L_2$ does, and both concentrate more than the
+unregularised baseline -- in an early layer (conv2\_block1), the Gini
+coefficient of per-neuron spike counts is $0.695$ (no regularisation),
+$0.758$ (Plain $L_2$), $0.894$ (Ours), and the top-$10\%$ of neurons in
+that layer carry $42.4\%$, $49.1\%$, and $80.5\%$ of the layer's spikes,
+respectively. Figure~\ref{fig:f2f3} shows this across all measured layers.
+\textbf{Two limits apply to every number in this paragraph.} First, this
+separation is an early- and middle-layer phenomenon: from
+conv3\_block2 onward the three conditions are not distinguishable, so we
+do not describe this as concentration "throughout the network" --
+Figure~\ref{fig:f2f3} shows the three lines converging by the later
+layers on the same axes as the layers where they separate. Second, we
+read this as neurons firing less densely, not as fewer neurons wired into
+the computation: the suppression correlation we measure (+0.61 to +0.69)
+is not distinguishable from a uniform control (+0.642), so this is
+concentration in the measured sense, not evidence that lateral inhibition
+is what produces it.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/f2_f3_gini_top10.pdf}
+\caption{Per-layer spike concentration, ResNet-19/CIFAR-10, unregularised
+baseline vs.\ Plain $L_2$ vs.\ the proposed regulariser, at the closest-landing
+spike pair (193K, quoted in the text). Left: Gini coefficient of per-neuron
+spike counts. Right: share of a layer's spikes carried by its top 10\% of
+neurons. In both panels the three conditions separate in the early and
+middle layers and converge from conv3\_block2 onward -- we do not claim
+concentration in the layers where the lines overlap.}
+\label{fig:f2f3}
+\end{figure*}
+
+\paragraph{What ``silent'' means here.}
+The active-neuron counts and layer-wise shares above are computed from
+\texttt{dead\_neuron\_ratio}, measured over a 100-image batch. This is a
+valid basis for comparing conditions against each other -- the same batch
+is used for all four -- but it measures neurons that did not fire for
+that batch, not neurons that never fire across the dataset. We do not read
+these numbers as counting permanently dead, prunable neurons: that would
+require re-measuring \texttt{dead\_neuron\_ratio} over the full 10,000-image
+test set to confirm a neuron is silent on every input, which is not done
+here (gate G5, unmet). Figure~\ref{fig:f5_intensity} (appendix) reports
+the per-neuron intensity numbers behind the ordering above in full, with
+the same caveat.
+
+% Appendix figures F5 and F6 -- same pattern as \input{tables/t8_generality}
+% above: full content lives in its own file with a live \label (so
+% \ref{fig:f5_intensity} / \ref{fig:f6_lambda} resolve once included), and
+% only the \input line here is commented out. This file has no \appendix
+% section yet to place them in (out of scope for Task 13; see
+% figures-tables.md); a future task adds \appendix and uncomments these.
+% \input{figures/f5_intensity}   % appendix, no gate -- page budget only
+% \input{figures/f6_lambda_epoch}  % GATE: spec \S 9-B, see paper/figures/f6_lambda_epoch.tex
