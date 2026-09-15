@@ -1243,6 +1243,12 @@ class Neuron(tf.keras.layers.Layer):
                         #sc_loss = tf.norm(self.out,ord=2)
                         #sc_loss = tf.sqrt(tf.reduce_sum(tf.square(self.out))+1.0E-10)
                         sc_loss = lib_snn.layers.l2_norm(spike,self.name)
+                    elif conf.reg_spike_out_bpsr:
+                        # BPSR eq.(4): (lambda/2) * sum_t sum_i (s_i^t)^2.
+                        # lambda 는 아래 reg_spike_out_const 로 곱해지므로 여기서는 0.5*sum.
+                        # reduce_sum 이다 — mean 이면 층 크기로 또 나뉘어 깊이 의존 lambda
+                        # 프로파일이 생기고, 그건 BPSR 이 의도한 균일 압력이 아니다.
+                        sc_loss = 0.5 * tf.reduce_sum(tf.math.square(spike))
                     elif conf.reg_spike_out_norm_sq:
                         sc_loss = tf.reduce_mean(tf.math.square(spike))
                     else:

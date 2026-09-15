@@ -807,6 +807,14 @@ flags.DEFINE_float('reg_spike_out_alpha',0,'regularization - spike count alpha')
 flags.DEFINE_float('reg_spike_rate_alpha',1,'regularization - coeffiient of regularization')
 flags.DEFINE_bool('reg_spike_out_norm',False,'regularization - spike output in neuron - norm based (L2,prev work)')
 flags.DEFINE_bool('reg_spike_out_norm_sq',False,'regularization - spike output in neuron - norm based (L2 sqaure,prev work)')
+flags.DEFINE_bool('reg_spike_out_bpsr',False,
+                  "BPSR (Yan et al. 2022, Front. Neurosci., eq.4) 의 spiking sparsity 항 그대로: "
+                  "(lambda/2) * sum_t sum_i (s_i^t)^2. 스파이크가 이진이라 s^2=s 이므로 "
+                  "사실상 (lambda/2) x 총 스파이크 수이고, 발화 뉴런당 gradient 가 lambda 로 "
+                  "**상수**다. reg_spike_out_norm 의 sqrt(sum s^2) 는 뉴런당 lambda/sqrt(N) 라 "
+                  "층마다 최대 30배, 학습 중 2배 달라진다 (측정). 둘은 lambda 재조정으로 "
+                  "맞출 수 없어 별도 비교군이 필요하다. reg_spike_out_norm_sq 는 reduce_mean "
+                  "이라 BPSR 이 아니다 (층 크기로 또 나눠 깊이 프로파일이 생긴다).")
 flags.DEFINE_bool('reg_spike_out_sc',False,'regularization - spike out * spike_count (norm)')
 flags.DEFINE_bool('reg_spike_out_sc_wta',True,'regularization - spike out * spike_count (norm), winner-take-all')
 flags.DEFINE_bool('reg_spike_out_sc_train',False,'regularization - spike out * spike_count (norm), coefficient train')

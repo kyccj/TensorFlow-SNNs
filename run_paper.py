@@ -85,6 +85,24 @@ def METHODS(name, knob):
         # sc 경로를 끄면 plain L2 가지로 간다 (neurons.py:1238)
         return {**BASE, 'reg_spike_out_sc': False, 'reg_spike_out_norm': True,
                 'reg_spike_out_norm_sq': False, 'reg_spike_final_step': False, **FIXED(knob)}
+    if name == 'bpsr':
+        # BPSR (Yan et al. 2022, Front. Neurosci.) eq.(4) 의 spiking sparsity 항 그대로.
+        # (lambda/2) * sum_t sum_i s^2. 스파이크가 이진이라 사실상 lambda/2 x 총 스파이크 수이고
+        # 발화 뉴런당 gradient 가 lambda 로 **상수**다. 우리 l2 가지(sqrt(sum s^2))는
+        # 뉴런당 lambda/sqrt(N) 라 층마다 최대 30배, 학습 중 2배 달라져서 lambda 재조정으로
+        # 맞출 수 없다. 문헌 표준 기준선을 인용하려면 이 팔이 따로 있어야 한다.
+        return {**BASE, 'reg_spike_out_sc': False, 'reg_spike_out_norm': False,
+                'reg_spike_out_norm_sq': False, 'reg_spike_out_bpsr': True,
+                'reg_spike_final_step': False, **FIXED(knob)}
+    if name == 'ours_layer':
+        # 제안법에서 채널 내 max 를 **층 전체 max** 로 바꾼다 (maxnorm_group='none').
+        # within_channel 은 채널마다 최고 뉴런이 sc_rate=0 으로 면제되어 어떤 채널도
+        # 통째로 죽지 않는다 (측정: 채널 단위 완전침묵이 plain L2 대비 50개뿐).
+        # 'none' 은 약한 채널을 통째로 지울 수 있어 구조적 프루닝에는 유리하지만
+        # 정확도를 잃을 수 있다. 그 맞바꿈의 크기를 아직 모른다.
+        return {**BASE, **WTA, **MAXNORM, **VMEM,
+                'reg_spike_maxnorm_group': "'none'",
+                'reg_spike_final_step': True, **RATIO(knob)}
     if name == 'abl_nofinal':
         return {**BASE, **WTA, **MAXNORM, **VMEM, 'reg_spike_final_step': False, **RATIO(knob)}
     if name == 'abl_novmem':
@@ -312,7 +330,7 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop sm l2 abl_nofinal abl_novmem abl_noinv abl_nolr')
+    ap.add_argument('method', nargs='?', help='base prop l2 sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
     ap.add_argument('knob', nargs='?', help="prop/abl 은 rho, sm/l2 는 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
@@ -329,7 +347,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop sm l2 abl_nofinal abl_novmem abl_noinv abl_nolr')
+        print('\n방법: base prop l2 sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 
