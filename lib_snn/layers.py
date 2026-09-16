@@ -2025,6 +2025,12 @@ def l2_norm_wta_rev(x, sc_rate, name):
     """L2 norm with gradient flow to non-firing neurons.
     Forward: sqrt(sum(x^2)), same as l2_norm
     Backward: sc_rate/||x|| instead of x/||x||, so spike=0 neurons get non-zero gradient
+
+    주의 -- 여기서 돌려주는 것은 **x 에 대한** 기울기다. 호출자(neurons.py)가
+    x = spike*sc_rate 를 이 함수 바깥에서 곱하므로, autodiff 가 그 곱셈을 미분하며
+    dx/dspike = sc_rate 를 한 번 더 곱한다. 따라서 spike 가 실제로 받는 기울기는
+    sc_rate/||x|| 가 아니라 **sc_rate^2/||x||** 다 (실측 확인). forward 는 sc_rate 가
+    한 번뿐이라 정상이다. 기울기를 w 한 번으로 만들려면 아래 l2_norm_wta_rev_w1 을 쓴다.
     """
     out = tf.sqrt(tf.reduce_sum(tf.square(x)))
 
@@ -2032,6 +2038,8 @@ def l2_norm_wta_rev(x, sc_rate, name):
         # x = spike * sc_rate
         # standard gradient: x / ||x|| -> zero when spike=0
         # modified gradient: sc_rate / ||x|| -> non-zero for all neurons
+        # (단, 이것은 x 에 대한 기울기다. 곱셈이 호출자 쪽에 있어서 spike 에 도달할 때는
+        #  sc_rate 가 한 번 더 곱해져 sc_rate^2/||x|| 가 된다 -- 위 docstring 참고)
         den_sq = tf.reduce_sum(tf.square(x))
         if conf.reg_spike_wta_rev_floor > 0.0:
             # ||x|| only sums over FIRING neurons, so it shrinks as the regularizer
@@ -2046,6 +2054,54 @@ def l2_norm_wta_rev(x, sc_rate, name):
 
         if conf.verbose_snn_train:
             print('l2_norm_wta_rev - {:}'.format(name))
+
+            var = x
+            print('{:} - max {:.3g}, min {:.3g}, mean {:.3g}, std {:.3g}, non_zero {:.3g}'
+                  .format('inputs',tf.reduce_max(var),tf.reduce_min(var),tf.reduce_mean(var),tf.math.reduce_std(var),tf.math.count_nonzero(var,dtype=tf.int32)/tf.math.reduce_prod(var.shape)))
+
+            var = upstream
+            print('{:} - max {:.3g}, min {:.3g}, mean {:.3g}, std {:.3g}'
+                  .format('y_backprop',tf.reduce_max(var),tf.reduce_min(var),tf.reduce_mean(var),tf.math.reduce_std(var)))
+
+            var = ret_grad
+            print('{:} - max {:.3g}, min {:.3g}, mean {:.3g}, std {:.3g}'
+                  .format('dx',tf.reduce_max(var),tf.reduce_min(var),tf.reduce_mean(var),tf.math.reduce_std(var)))
+
+            print('')
+
+        return ret_grad, None, None
+
+    return out, grad
+
+
+@tf.custom_gradient
+def l2_norm_wta_rev_w1(spike, sc_rate, name):
+    """l2_norm_wta_rev 와 forward 는 같고, spike 가 받는 기울기만 w^1 인 경로.
+
+    Forward:  sqrt(sum((spike*sc_rate)^2))  -- 위 함수와 완전히 동일한 값.
+    Backward: dL/dspike = sc_rate/||x||     -- 위 함수는 sc_rate^2/||x|| 다.
+
+    차이는 곱셈의 위치 하나뿐이다. 여기서는 x = spike*sc_rate 를 함수 **안에서** 만들고
+    spike 를 입력으로 받으므로, 돌려주는 기울기가 곧 spike 에 대한 기울기가 되어
+    autodiff 가 sc_rate 를 다시 곱하지 않는다. sc_rate 는 spike_count(tf.Variable)에서
+    나와 기울기가 없으므로 sc_rate 쪽 기울기는 None 으로 둔다.
+    conf.reg_spike_wta_rev_w1 로만 켜진다 (기본 False = 기존 w^2 경로).
+    """
+    x = tf.multiply(spike, sc_rate)
+    out = tf.sqrt(tf.reduce_sum(tf.square(x)))
+
+    def grad(upstream):
+        den_sq = tf.reduce_sum(tf.square(x))
+        if conf.reg_spike_wta_rev_floor > 0.0:
+            # 위 함수와 같은 바닥값. 분모만 건드리므로 w^1/w^2 선택과 직교한다.
+            ref_sq = tf.stop_gradient(tf.reduce_sum(tf.square(sc_rate)))
+            den_sq = den_sq + tf.cast(conf.reg_spike_wta_rev_floor, den_sq.dtype) * ref_sq
+        dy_dspike = tf.multiply(sc_rate, tf.math.rsqrt(den_sq))
+        condition = tf.math.count_nonzero(x, dtype=tf.int32) == 0
+        ret_grad = tf.where(condition, tf.zeros(upstream.shape), upstream * dy_dspike)
+
+        if conf.verbose_snn_train:
+            print('l2_norm_wta_rev_w1 - {:}'.format(name))
 
             var = x
             print('{:} - max {:.3g}, min {:.3g}, mean {:.3g}, std {:.3g}, non_zero {:.3g}'

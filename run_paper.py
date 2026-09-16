@@ -13,6 +13,7 @@
 
 **방법**
     prop        제안법 — 채널 내 1-maxnorm + vmem(silent_only, gain=1.0) + final_step + loss-ratio(rho)
+    ours_w1     prop 와 전부 같고 wta_rev 의 spike 기울기만 w 한 번 (기본은 w^2). knob 은 rho
     sm          1-softmax + 고정 lambda        (내부 최강 기준선)
     l2          plain L2 + 고정 lambda         (문헌 기준선. reg_spike_out_sc=False 로 두면
                                                 neurons.py:1238 의 `else: # old - previous work`
@@ -57,6 +58,7 @@ BASE = {
     'reg_spike_lr_linked': False,
     'reg_spike_lr_brake': False,
     'sc_loss_scd': False,
+    'reg_spike_wta_rev_w1': False,      # 기본 경로(실효 기울기 w^2). ours_w1 만 True 로 덮는다
 }
 WTA = {'reg_spike_out_sc': True, 'reg_spike_out_wta_rev': True}
 MAXNORM = {'reg_spike_out_sc_maxnorm': True, 'reg_spike_maxnorm_group': "'within_channel'",
@@ -78,6 +80,13 @@ def METHODS(name, knob):
                 'reg_spike_out': False, 'reg_spike_loss_ratio': False}
     if name == 'prop':
         return {**BASE, **WTA, **MAXNORM, **VMEM, 'reg_spike_final_step': True, **RATIO(knob)}
+    if name == 'ours_w1':
+        # prop 와 **모든 설정이 같고** reg_spike_wta_rev_w1 만 True.
+        # wta_rev 의 backward 가 spike 에 sc_rate 를 두 번 곱해 실효 기울기가 w^2 였다
+        # (곱셈이 custom_gradient 바깥에 있어서다. flags.py 의 해당 항목 참고).
+        # 이 팔은 설계 의도대로 w 한 번일 때 무엇이 달라지는지를 묻는다.
+        # forward(R)는 두 경로가 같으므로 loss-ratio 의 rho 눈금도 그대로다.
+        return {**METHODS('prop', knob), 'reg_spike_wta_rev_w1': True}
     if name == 'sm':
         return {**BASE, **WTA, 'reg_spike_out_sc_sm': True, 'reg_spike_out_sc_maxnorm': False,
                 'reg_spike_final_step': False, **FIXED(knob)}
@@ -330,8 +339,8 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop l2 sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
-    ap.add_argument('knob', nargs='?', help="prop/abl 은 rho, sm/l2 는 lambda, base 는 '-'")
+    ap.add_argument('method', nargs='?', help='base prop ours_w1 l2 sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
+    ap.add_argument('knob', nargs='?', help="prop/ours_w1/abl 은 rho, sm/l2 는 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
     ap.add_argument('--dir', default='_paper', help='스윕 디렉토리')
@@ -347,7 +356,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop l2 sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
+        print('\n방법: base prop ours_w1 l2 sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 

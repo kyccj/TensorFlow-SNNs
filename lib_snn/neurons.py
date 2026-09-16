@@ -1084,11 +1084,35 @@ class Neuron(tf.keras.layers.Layer):
                     if conf.reg_spike_out_encourage:
                         sc_loss_enc = (1.0 - spike_reg) * (1.0 - sc_rate)
 
+                    # w1 은 wta_rev 의 backward 만 바꾸는 플래그다. wta_rev 가 꺼져 있으면
+                    # 조용히 무시되어 기본 경로와 똑같은 런이 'ours_w1' 이름으로 남는다.
+                    assert conf.reg_spike_out_wta_rev or not conf.reg_spike_wta_rev_w1, \
+                        'reg_spike_wta_rev_w1 은 reg_spike_out_wta_rev 가 켜져 있어야 한다'
+
                     if conf.reg_spike_out_wta_rev:
                         # revised WTA: L2 norm forward, modified gradient for non-firing neurons
                         # standard L2 gradient: x/||x|| -> zero when spike=0
                         # modified gradient: sc_rate/||x|| -> non-zero for all neurons
-                        sc_loss = lib_snn.layers.l2_norm_wta_rev(sc_loss, sc_rate, self.name)
+                        if conf.reg_spike_wta_rev_w1:
+                            # w^1 경로. 기본 경로는 sc_loss(=spike_reg*sc_rate)를 넘기는데,
+                            # 그 곱셈이 custom_gradient 바깥이라 spike 에는 sc_rate 가 두 번
+                            # 곱해진다(실효 w^2). 여기서는 곱하지 않은 spike_reg 와 sc_rate 를
+                            # 따로 넘겨 함수 안에서 곱하게 하므로 w 가 한 번만 곱해진다.
+                            # forward 값은 두 경로가 같다.
+                            #
+                            # accum_loss 와는 같이 쓸 수 없다: accum 은 타임스텝마다 sc_rate 가
+                            # 다시 계산된 s_t*w_t 를 모아 sum_t(s_t*w_t) 의 norm 을 잰다.
+                            # w1 경로는 (spike, sc_rate) 한 쌍만 받으므로 그 합을 만들 수 없고,
+                            # 마지막 스텝의 w 로 뭉뚱그리면 forward 값 자체가 달라진다.
+                            # inv_s 도 마찬가지로 sc_loss 가 s*w 형태가 아니라 배제한다.
+                            # 논문 설정은 final_step=True 라 두 분기 모두 타지 않는다.
+                            assert not conf.reg_spike_accum_loss, \
+                                'reg_spike_wta_rev_w1 과 reg_spike_accum_loss 는 같이 쓸 수 없다'
+                            assert not conf.reg_spike_out_inv_s, \
+                                'reg_spike_wta_rev_w1 과 reg_spike_out_inv_s 는 같이 쓸 수 없다'
+                            sc_loss = lib_snn.layers.l2_norm_wta_rev_w1(spike_reg, sc_rate, self.name)
+                        else:
+                            sc_loss = lib_snn.layers.l2_norm_wta_rev(sc_loss, sc_rate, self.name)
                         if conf.reg_spike_out_encourage:
                             sc_loss_enc = lib_snn.layers.l2_norm(sc_loss_enc, self.name)
                     elif conf.reg_spike_out_norm:
