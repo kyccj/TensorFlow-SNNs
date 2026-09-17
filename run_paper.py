@@ -14,6 +14,7 @@
 **방법**
     prop        제안법 — 채널 내 1-maxnorm + vmem(silent_only, gain=1.0) + final_step + loss-ratio(rho)
     ours_w1     prop 와 전부 같고 wta_rev 의 spike 기울기만 w 한 번 (기본은 w^2). knob 은 rho
+    ours_ch     prop 와 전부 같고 max 범위만 채널 합끼리 ('channel'). knob 은 rho
     sm          1-softmax + 고정 lambda        (내부 최강 기준선)
     l2          plain L2 + 고정 lambda         (문헌 기준선. reg_spike_out_sc=False 로 두면
                                                 neurons.py:1238 의 `else: # old - previous work`
@@ -87,6 +88,12 @@ def METHODS(name, knob):
         # 이 팔은 설계 의도대로 w 한 번일 때 무엇이 달라지는지를 묻는다.
         # forward(R)는 두 경로가 같으므로 loss-ratio 의 rho 눈금도 그대로다.
         return {**METHODS('prop', knob), 'reg_spike_wta_rev_w1': True}
+    if name == 'ours_ch':
+        # prop 와 전부 같고 max 를 잡는 범위만 다르다: 채널의 공간 합끼리 경쟁한다
+        # (neurons.py 의 'channel' 분기). 채널 안 모든 위치가 같은 w 를 받으므로
+        # 순수한 채널 선별기다 -- 약한 채널이 통째로 눌린다. within_channel 이 못 보는
+        # 채널 전체 활동량을 본다. 구조적 프루닝 각도를 재는 팔이다.
+        return {**METHODS('prop', knob), 'reg_spike_maxnorm_group': "'channel'"}
     if name == 'sm':
         return {**BASE, **WTA, 'reg_spike_out_sc_sm': True, 'reg_spike_out_sc_maxnorm': False,
                 'reg_spike_final_step': False, **FIXED(knob)}
@@ -339,8 +346,8 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop ours_w1 l2 sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
-    ap.add_argument('knob', nargs='?', help="prop/ours_w1/abl 은 rho, sm/l2 는 lambda, base 는 '-'")
+    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch l2 sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
+    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/abl 은 rho, sm/l2 는 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
     ap.add_argument('--dir', default='_paper', help='스윕 디렉토리')
@@ -356,7 +363,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop ours_w1 l2 sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
+        print('\n방법: base prop ours_w1 ours_ch l2 sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 
