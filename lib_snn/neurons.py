@@ -1279,7 +1279,28 @@ class Neuron(tf.keras.layers.Layer):
                         assert False
                         sc_loss = tf.reduce_mean(self.out)
 
-                    sc_loss = conf.reg_spike_out_const*sc_loss
+                    # 이 옛 가지(plain L2 · BPSR)는 loss-ratio 제어기를 받지 못했다. 이유가 둘이다:
+                    # (1) sc_loss_snap 을 한 번도 안 찍어서 proc.py 가 읽는 R 이 0 이고,
+                    #     제어기는 R<=0 이면 갱신을 건너뛴다 — lambda 가 초기값에 영영 머문다.
+                    # (2) lambda 를 정적 reg_spike_out_const 로만 곱해 adaptive_lambda 를 안 본다.
+                    # plain L2 + loss-ratio 대조군(l2_lr)에는 둘 다 필요하다.
+                    #
+                    # loss_ratio 가 꺼져 있으면 예전과 똑같은 경로로 둔다 — plain L2 · BPSR
+                    # 기존 런의 재현이 여기 걸려 있다. snap 도 건드리지 않는다
+                    # (log_detail 만 켠 기존 런의 reg CSV 값까지 그대로 유지하려는 것).
+                    if conf.reg_spike_loss_ratio:
+                        # 누적 규칙은 sc 가지(위)와 **같다**. 이 가지도 final_step 이 아니면
+                        # add_loss 가 매 타임스텝 불려 손실에 sum_t 가 들어가므로, 단순 assign 이면
+                        # 마지막 스텝만 남아 R 을 T배 과소보고하고 실효 비율이 rho 가 아니라
+                        # T*rho 가 된다. t==1 에 assign, 이후 assign_add.
+                        if (conf.reg_spike_accum_loss or conf.reg_spike_final_step
+                                or conf.reg_spike_R_per_step or t == 1):
+                            self.sc_loss_snap.assign(sc_loss)
+                        else:
+                            self.sc_loss_snap.assign_add(sc_loss)
+                        sc_loss = sc_loss * lib_snn.model.adaptive_lambda
+                    else:
+                        sc_loss = conf.reg_spike_out_const*sc_loss
                     self.add_loss(sc_loss)
 
         #if True:

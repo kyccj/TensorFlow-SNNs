@@ -19,6 +19,8 @@
     l2          plain L2 + 고정 lambda         (문헌 기준선. reg_spike_out_sc=False 로 두면
                                                 neurons.py:1238 의 `else: # old - previous work`
                                                 가지로 가서 l2_norm(spike) 이 된다)
+    l2_lr       plain L2 + loss-ratio          (l2 와 전부 같고 lambda 만 제어기가 푼다. knob 은 rho.
+                                                제어기의 몫과 제안법 나머지의 몫을 가르는 대조군)
     abl_nofinal 제안법에서 final_step 만 끔     (시점의 기여)
     abl_novmem  제안법에서 vmem 만 끔 (gain=0)  (막전위의 기여)
     abl_noinv   제안법에서 1- 반전만 끔         (maxnorm_plain = sc/max. 이름의 근거)
@@ -101,6 +103,15 @@ def METHODS(name, knob):
         # sc 경로를 끄면 plain L2 가지로 간다 (neurons.py:1238)
         return {**BASE, 'reg_spike_out_sc': False, 'reg_spike_out_norm': True,
                 'reg_spike_out_norm_sq': False, 'reg_spike_final_step': False, **FIXED(knob)}
+    if name == 'l2_lr':
+        # l2 와 **모든 설정이 같고** lambda 만 loss-ratio 가 푼다. knob 은 lambda 가 아니라 rho.
+        # "제안법은 lambda 를 손으로 안 찾아도 된다" 는 주장의 대조군이다 -- 제어기 자체의 몫과
+        # 1-maxnorm/vmem/final_step 의 몫을 갈라준다. 이게 없으면 둘이 섞인 채로만 보인다.
+        # 고정 lambda 자리는 지운다 (reg_spike_out_const 를 rho 로 남겨두면, 플래그가 잘못
+        # 꺼졌을 때 rho 가 조용히 lambda 로 쓰인다).
+        # 옛 가지가 제어기를 받게 된 경위는 lib_snn/neurons.py 의 해당 주석 참고.
+        base = {k: v for k, v in METHODS('l2', knob).items() if k != 'reg_spike_out_const'}
+        return {**base, **RATIO(knob)}
     if name == 'bpsr':
         # BPSR (Yan et al. 2022, Front. Neurosci.) eq.(4) 의 spiking sparsity 항 그대로.
         # (lambda/2) * sum_t sum_i s^2. 스파이크가 이진이라 사실상 lambda/2 x 총 스파이크 수이고
@@ -346,8 +357,8 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch l2 sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
-    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/abl 은 rho, sm/l2 는 lambda, base 는 '-'")
+    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch l2 l2_lr sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
+    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_layer/l2_lr/abl(nolr 제외) 은 rho, sm/l2/bpsr/abl_nolr 은 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
     ap.add_argument('--dir', default='_paper', help='스윕 디렉토리')
@@ -363,7 +374,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop ours_w1 ours_ch l2 sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
+        print('\n방법: base prop ours_w1 ours_ch l2 l2_lr sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 
