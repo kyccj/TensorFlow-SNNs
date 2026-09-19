@@ -15,6 +15,8 @@
     prop        제안법 — 채널 내 1-maxnorm + vmem(silent_only, gain=1.0) + final_step + loss-ratio(rho)
     ours_w1     prop 와 전부 같고 wta_rev 의 spike 기울기만 w 한 번 (기본은 w^2). knob 은 rho
     ours_ch     prop 와 전부 같고 max 범위만 채널 합끼리 ('channel'). knob 은 rho
+    ours_ch_b7  ours_ch + shape_beta=0.7 (1등 채널도 w=0.3 을 받는다). knob 은 rho
+    ours_ch_b4  ours_ch + shape_beta=0.4. knob 은 rho
     sm          1-softmax + 고정 lambda        (내부 최강 기준선)
     l2          plain L2 + 고정 lambda         (문헌 기준선. reg_spike_out_sc=False 로 두면
                                                 neurons.py:1238 의 `else: # old - previous work`
@@ -96,6 +98,15 @@ def METHODS(name, knob):
         # 순수한 채널 선별기다 -- 약한 채널이 통째로 눌린다. within_channel 이 못 보는
         # 채널 전체 활동량을 본다. 구조적 프루닝 각도를 재는 팔이다.
         return {**METHODS('prop', knob), 'reg_spike_maxnorm_group': "'channel'"}
+    if name in ('ours_ch_b7', 'ours_ch_b4'):
+        # ours_ch 와 전부 같고 reg_spike_shape_beta 만 다르다 (sc_rate = 1 - beta*sc/max).
+        # beta=1(기본)은 1등이 w=0 으로 완전 면제인데, channel 묶음에서는 그게 1등 **채널
+        # 통째**라 예산의 최대 덩어리가 압력을 못 받는다 -- 09-19 중간값에서 스파이크가
+        # 434K/391K/358K 로 거의 안 줄었다 (ours 는 같은 rho 에서 290K/234K/192K).
+        # beta<1 이면 1등도 w=1-beta 를 받는다. loss-ratio 가 lambda 를 다시 풀어 주므로
+        # 이 스윕은 lambda 스윕으로 위장되지 않는다 (그래서 shape_mean1 은 켜지 않는다).
+        beta = 0.7 if name.endswith('b7') else 0.4
+        return {**METHODS('ours_ch', knob), 'reg_spike_shape_beta': beta}
     if name == 'sm':
         return {**BASE, **WTA, 'reg_spike_out_sc_sm': True, 'reg_spike_out_sc_maxnorm': False,
                 'reg_spike_final_step': False, **FIXED(knob)}
@@ -357,7 +368,7 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch l2 l2_lr sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
+    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 l2 l2_lr sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
     ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_layer/l2_lr/abl(nolr 제외) 은 rho, sm/l2/bpsr/abl_nolr 은 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
@@ -374,7 +385,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop ours_w1 ours_ch l2 l2_lr sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
+        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 l2 l2_lr sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 
