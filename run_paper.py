@@ -26,6 +26,9 @@
     abl_nofinal 제안법에서 final_step 만 끔     (시점의 기여)
     abl_novmem  제안법에서 vmem 만 끔 (gain=0)  (막전위의 기여)
     abl_noinv   제안법에서 1- 반전만 끔         (maxnorm_plain = sc/max. 이름의 근거)
+    abl_noinv_wc 제안법에서 1- 반전**만** 끈다. 채널 내 묶음과 vmem 은 그대로 둔다.
+                abl_noinv 는 maxnorm_plain 가지라 group·vmem 을 안 읽어 세 요소가 동시에
+                빠진다 -- 어블레이션 표의 '반전의 효과'는 이 팔이다. knob 은 rho
     abl_nolr    제안법에서 loss-ratio 만 끔  (고정 lambda. knob 이 rho 가 아니라 lambda)
 
 **선별** — 조건당 5런을 돌리고 4개를 쓴다. 배제 규칙은 제안법과 비교군에 똑같이 적용한다:
@@ -64,6 +67,7 @@ BASE = {
     'reg_spike_lr_brake': False,
     'sc_loss_scd': False,
     'reg_spike_wta_rev_w1': False,      # 기본 경로(실효 기울기 w^2). ours_w1 만 True 로 덮는다
+    'reg_spike_maxnorm_no_inv': False,  # 1- 반전 유지. abl_noinv_wc 만 True 로 덮는다
 }
 WTA = {'reg_spike_out_sc': True, 'reg_spike_out_wta_rev': True}
 MAXNORM = {'reg_spike_out_sc_maxnorm': True, 'reg_spike_maxnorm_group': "'within_channel'",
@@ -141,6 +145,15 @@ def METHODS(name, knob):
         return {**BASE, **WTA, **MAXNORM, **VMEM,
                 'reg_spike_maxnorm_group': "'none'",
                 'reg_spike_final_step': True, **RATIO(knob)}
+    if name == 'ours_layer_w1':
+        # ours_layer 와 **모든 설정이 같고** reg_spike_wta_rev_w1 만 True.
+        # 기본 경로의 실효 기울기가 w^2 인 것은 설계가 아니라 결과다 -- neurons.py 가
+        # x = spike*sc_rate 를 custom_gradient **바깥에서** 곱해, backward 가 이미 w 를
+        # 실은 기울기에 w 가 한 번 더 붙는다. 설계 의도는 w 한 번이다.
+        # 이 팔은 그 의도대로의 w^1 을 층 전체 경쟁(maxnorm_group='none')과 묶는다.
+        # forward(R)는 두 경로가 같으므로 loss-ratio 의 rho 눈금이 ours_layer 와 공유된다
+        # -- 같은 rho 끼리 바로 비교할 수 있고 rho 를 다시 찾을 필요가 없다.
+        return {**METHODS('ours_layer', knob), 'reg_spike_wta_rev_w1': True}
     if name == 'abl_nofinal':
         return {**BASE, **WTA, **MAXNORM, **VMEM, 'reg_spike_final_step': False, **RATIO(knob)}
     if name == 'abl_novmem':
@@ -154,6 +167,16 @@ def METHODS(name, knob):
         # 시간평균 4.0e-7, 중반 고원 4.83e-7, 후반 2.58e-7.
         # 이 팔은 "그 궤적이 필요한가, 같은 착지점이면 그만인가" 를 묻는다.
         return {**BASE, **WTA, **MAXNORM, **VMEM, 'reg_spike_final_step': True, **FIXED(knob)}
+    if name == 'abl_noinv_wc':
+        # prop 와 **모든 설정이 같고** reg_spike_maxnorm_no_inv 만 True.
+        # 1-maxnorm 가지를 그대로 타고 마지막의 sc_rate = 1 - beta*sc_norm 을
+        # sc_rate = sc_norm 으로만 바꾼다. 따라서 within_channel 묶음과
+        # vmem(silent_only, gain=1.0), final_step, loss-ratio 가 전부 살아 있다.
+        # 기존 abl_noinv 는 maxnorm_plain 가지(neurons.py)로 가는데 그 가지는
+        # reg_spike_maxnorm_group 과 reg_spike_vmem_gain 을 읽지 않는다 -- 즉 반전·채널 내
+        # 묶음·vmem 세 요소 동시 제거라 단일 요소 어블레이션이 아니다.
+        # 기존 abl_noinv 런의 재현이 거기 걸려 있어 그 팔은 그대로 둔다.
+        return {**METHODS('prop', knob), 'reg_spike_maxnorm_no_inv': True}
     if name == 'abl_noinv':
         # 1- 반전 제거: sc_rate = sc/max. 침묵 뉴런이 sc_rate=0 이 되어 규제에서 빠진다
         return {**BASE, **WTA, **VMEM, 'reg_spike_out_sc_maxnorm': False,
@@ -368,8 +391,8 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 l2 l2_lr sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
-    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_layer/l2_lr/abl(nolr 제외) 은 rho, sm/l2/bpsr/abl_nolr 은 lambda, base 는 '-'")
+    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 l2 l2_lr sm bpsr ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr')
+    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_layer/ours_layer_w1/l2_lr/abl(nolr 제외) 은 rho, sm/l2/bpsr/abl_nolr 은 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
     ap.add_argument('--dir', default='_paper', help='스윕 디렉토리')
@@ -385,7 +408,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 l2 l2_lr sm bpsr ours_layer abl_nofinal abl_novmem abl_noinv abl_nolr')
+        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 l2 l2_lr sm bpsr ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 

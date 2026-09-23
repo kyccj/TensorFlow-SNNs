@@ -80,7 +80,9 @@ lib_snn/neurons.py   flags.py   run_paper.py   config_snn_training.py
   `EIP_STORE`/`EIP_PYTHON` export 필요
 - **canus GPU 6,7 은 juyun 것이다. 절대 쓰지 않는다.**
 - 실행기를 늘릴 때 기존 것을 kill 하지 않는다. **두 번째 실행기를 붙인다** (kill 하면 고아)
-- `pkill -f <패턴>` 금지 — 자기 셸이 죽는다. `ps -eo pid,args | grep 'patt[e]rn'` 을 쓴다
+- `pkill -f <패턴>` 금지 — 자기 셸이 죽는다. **`kill` 에는 정확한 PID 만 넘긴다.**
+  `for p in $(ps | grep 패턴)` 처럼 grep 결과를 kill 에 흘리는 것도 같은 사고다 (09-19, exit 144).
+  절차: (1) 읽기 전용 명령으로 PID 를 눈으로 확인 → (2) 다음 명령에서 `kill <숫자>`.
 
 ## 보고 규약
 
@@ -89,6 +91,17 @@ lib_snn/neurons.py   flags.py   run_paper.py   config_snn_training.py
 - 서버 열을 넣는다 (`138` / `23`)
 - 방법 이름은 영어: `baseline`, `ours`, `plain L2`, `BPSR`, `1-softmax`.
   ablation 은 `- vmem`, `- final_step`, `- 1- inversion`, `- loss-ratio`
+- **경쟁 범위 세 팔의 이름 (2026-09-21 확정).** `reg_spike_maxnorm_group` 의 내부값을
+  글·표·그림에 쓰지 않는다. 채널 **안**에서 겨루면 intra, 채널 **끼리** 겨루면 inter 다.
+
+  | 이름 | 코드 플래그 | 겨루는 상대 | 옛 표기 |
+  |---|---|---|---|
+  | `ours_intra_ch` | `within_channel` | 같은 채널 안의 다른 위치 | `ours` / `prop` |
+  | `ours_layer` | `none` | 층의 모든 뉴런 | `ours_layer` |
+  | `ours_inter_ch` | `channel` | 다른 채널 (채널 공간합끼리) | `ours_ch` |
+
+  **원래 방법(제안법)은 `ours_intra_ch` 다.** 런 디렉토리명·`run_paper.py` 의 방법 키는
+  기존대로 `prop`/`ours_ch` 를 쓴다 (바꾸면 완주한 런과 큐가 어긋난다).
 - 그래프는 **실제 정확도(y) × 실제 스파이크 수(x)**. 차이(delta)로 그리지 않는다
 - `1-maxnorm` = `1 − sc/max`, `maxnorm` = `sc/max`
 - **모든 수치에 n 을 붙인다.** 정확도 시드 간 SD 는 0.10~0.13%p — 그보다 작은 차이는

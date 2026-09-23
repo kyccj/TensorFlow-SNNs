@@ -1003,8 +1003,28 @@ class Neuron(tf.keras.layers.Layer):
                             #             never 0 -- so it cannot drop out of the regulariser
                             #             and die the way plain maxnorm does at large lambda.
                             beta = tf.cast(conf.reg_spike_shape_beta, sc_norm.dtype)
-                            sc_rate = 1.0 - beta * sc_norm
+                            if conf.reg_spike_maxnorm_no_inv:
+                                # '- 1- inversion' 어블레이션: 반전만 끈다. sc_rate = sc_norm
+                                # (maxnorm 방향 -- 많이 쏜 뉴런이 세게 눌린다).
+                                # 위의 group 묶음과 vmem readiness 를 다 지나온 sc_norm 을 그대로
+                                # 쓰므로, reg_spike_out_sc_maxnorm_plain 과 달리 제안법에서
+                                # 반전 **하나만** 빠진 팔이 된다 (plain 쪽은 group·vmem 을 안 읽어서
+                                # 반전+within_channel+vmem 세 개가 동시에 빠진다).
+                                # 침묵 뉴런의 가중: vmem_gain=0 이면 sc_norm=0 이라 wta_rev backward 가
+                                # 그들에게 기울기를 전혀 안 준다 -- maxnorm 방향의 본질이고 의도된 것이다.
+                                # vmem_gain>0 이면 침묵 뉴런도 readiness 만큼 scp>0 이라 가중이 정확히
+                                # 0 은 아니고 [0,1) 로 퍼진다. 이게 기존 maxnorm_plain(readiness 없음,
+                                # 침묵 = 정확히 0)과의 핵심 차이다.
+                                # beta 는 여기서 안 쓴다. 1- 가 없으면 beta*sc_norm 은 단순 배율이라
+                                # lambda 와 구분되지 않고, loss-ratio 가 lambda 를 다시 푸므로 무효다.
+                                sc_rate = sc_norm
+                            else:
+                                sc_rate = 1.0 - beta * sc_norm
                             if conf.reg_spike_shape_mean1:
+                                # no_inv 와 같이 켜면 mean(sc_norm) (≈1e-1 이하)으로 나누므로
+                                # 실효 배율이 수배로 뛰고, 그 평균은 group 과 무관하게
+                                # reduce_axis(층 전체)로 난다 -- 묶음과 엇나간다. abl_noinv_wc 는
+                                # mean1 을 켜지 않는다.
                                 # hold mean(sc_rate)=1 so a beta sweep is not a disguised
                                 # lambda sweep. Off by default so beta=1 reproduces exactly.
                                 sc_rate = tf.math.divide_no_nan(
