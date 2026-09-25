@@ -112,6 +112,8 @@ def main():
     ap.add_argument('--queue', default=os.path.join(ROOT, '_queue/QUEUE.tsv'))
     ap.add_argument('--dir', default='_paper')
     ap.add_argument('--poll', type=int, default=180, help='빈 GPU 확인 주기(초)')
+    ap.add_argument('--exit-when-empty', action='store_true',
+                    help='큐가 비면 종료 (09-25 이전 동작). 기본은 계속 대기한다')
     ap.add_argument('--dry', action='store_true')
     ap.add_argument('--remote', default='', metavar='USER@HOST',
                     help='큐 주인 서버. 주면 claim/finish 를 SSH 로 위임한다 '
@@ -126,6 +128,7 @@ def main():
     if socket.gethostname() == 'canus':
         assert not (set(gpus) & {6, 7}), 'canus 의 GPU 6,7 은 juyun 소유다'
     running = {}                       # gpu -> (Popen, idx, item)
+    idle = False                       # 큐가 빈 상태를 한 번만 알리려고
 
     while True:
         # 끝난 것 회수
@@ -164,17 +167,28 @@ def main():
                 continue
             running[g] = (subprocess.Popen(cmd, cwd=ROOT), idx, c)
 
-        if not running:
+        if running or got:
+            idle = False
+        else:
             if a.remote:
                 # 빈 GPU 가 있었는데도 못 집어왔으면 원격 큐가 비었다는 뜻이다.
-                if free and got is None:
-                    print('원격 큐 비었음 — 종료', flush=True)
-                    return
+                empty = bool(free) and got is None
             else:
                 with open(a.queue) as f:
-                    if not any(l.startswith('todo\t') for l in f):
-                        print('큐 비었음 — 종료', flush=True)
-                        return
+                    empty = not any(l.startswith('todo\t') for l in f)
+            if empty:
+                # 09-25: 예전에는 여기서 return 했다. 큐가 한 번 비면 러너가 죽고, 나중에
+                # 큐를 채워도 그 GPU 를 볼 러너가 없어 자리가 놀았다 (sejong 0~3번이
+                # 04:38 에 스스로 종료 -> 10:58 에 20건을 넣었지만 4장이 계속 빔).
+                # 기본은 죽지 않고 계속 폴링한다. 옛 동작은 --exit-when-empty.
+                if a.exit_when_empty:
+                    print(('원격 ' if a.remote else '') + '큐 비었음 — 종료', flush=True)
+                    return
+                if not idle:
+                    print(f"[{time.strftime('%m-%d %H:%M')}] "
+                          + ('원격 ' if a.remote else '') + '큐 비었음 — 대기 (종료하지 않는다)',
+                          flush=True)
+                idle = True
         time.sleep(a.poll)
 
 
