@@ -27,6 +27,11 @@ except Exception: pass
 try:
     from models.vgg_speck import VGG_SPECK
 except Exception: pass
+# VGGSNN (CIFAR10-DVS). 26-09-29 run_paper.py 의 vggdvs 조합용. 다른 모델과 같이 실패해도 조용히 None
+VGGSNN = None
+try:
+    from models.vggsnn import VGGSNN
+except Exception: pass
 try:
     from models.resnet import (ResNet18, ResNet19, ResNet34, ResNet50,
                                 ResNet101, ResNet152, ResNet20, ResNet32,
@@ -63,6 +68,7 @@ model_sel_sc = {
     'VGG11': VGG11,
     'VGG16': VGG16,
     'VGG_SPECK': VGG_SPECK,
+    'VGGSNN': VGGSNN,
     'ResNet18': ResNet18,
     'ResNet19': ResNet19,
     'ResNet20': ResNet20,

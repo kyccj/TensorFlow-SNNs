@@ -98,12 +98,15 @@ def load():
 #        #train_ds, train_ds_num = default_load_train()
 #        train_ds = train_ds.map(lambda events,labels: as_frames(events,labels,shape=image_shape,num_frames=num_frames,augmentation=True))
 
-    train_ds = train_ds.batch(batch_size)
+    # drop_remainder: 모델 Input 이 batch_size 고정이라 마지막 부분 배치(9000 % 32 = 8)가 들어오면
+    # 모양이 안 맞는다. Surro 의 VGGSNN 레시피(batch 32)가 같은 이유로 켠다 (26-09-29).
+    # batch 100 이면 9000/1000 이 나누어떨어져 아무것도 안 버린다 (기존 동작 그대로).
+    train_ds = train_ds.batch(batch_size, drop_remainder=True)
     train_ds = train_ds.prefetch(num_parallel)
 
     #valid_ds = valid_ds.map(lambda events,labels: as_frame(events,labels,shape=image_shape))
     valid_ds = valid_ds.map(lambda events,labels: as_frames(events,labels,shape=image_shape,num_frames=num_frames))
-    valid_ds = valid_ds.batch(batch_size)
+    valid_ds = valid_ds.batch(batch_size, drop_remainder=True)
     valid_ds = valid_ds.prefetch(num_parallel)
 
 
@@ -122,7 +125,9 @@ def load():
             plt.imshow(frame)
 
     #valid_ds = train_ds
-    train_ds_num=10000*train_ratio
-    valid_ds_num=10000*(1-train_ratio)
+    # 실제로 도는 표본 수 (drop_remainder 로 버린 만큼 뺀다). 에폭 끝 s_count 를 표본당으로
+    # 나누는 분모다 (proc.py spike_count_epoch_end). 예전 식 10000*(1-0.9) 는 999.99... 였다.
+    train_ds_num = (int(round(10000*train_ratio)) // batch_size) * batch_size
+    valid_ds_num = (int(round(10000*(1-train_ratio))) // batch_size) * batch_size
 
     return train_ds, valid_ds, valid_ds, train_ds_num, valid_ds_num, valid_ds_num

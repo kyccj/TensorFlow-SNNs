@@ -50,6 +50,10 @@ SOURCES = {
     'vggc10':   ('_sweep_wta_rev/lambda_1e-07',          'VGG16',    'CIFAR10'),
     'r19c100':  ('_sweep_wta_rev_r19_c100/lambda_1e-07', 'ResNet19', 'CIFAR100'),
     'vggc100':  ('_sweep_wta_rev_c100/lambda_1e-07',     'VGG16',    'CIFAR100'),
+    # 26-09-29 VGGSNN x CIFAR10-DVS. 원본은 git 추적 경로(configs_paper/)에 둔다 -- 위 넷은
+    # _*/ 라 .gitignore 대상이어서 sejong 이 pull 로 못 받는다. 레시피(200ep, batch 32, T=4)와
+    # 근거는 그 파일 머리 주석에 있다. 기존 네 조합의 생성 config 는 이 줄과 무관하다.
+    'vggdvs':   ('configs_paper/vggdvs',                 'VGGSNN',   'CIFAR10_DVS'),
 }
 
 # 모든 방법이 공유하는 바닥값. 켜고 끄는 것을 전부 명시해 원본 상태에 안 기댄다.
