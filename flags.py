@@ -378,7 +378,11 @@ flags.DEFINE_enum('data_prep', 'default', ['default', 'max_norm', 'max_norm_d', 
 # data augmentation
 ####
 #flags.DEFINE_enum('data_aug_mix', 'None', ['mixup', 'cutmix', 'None'], 'data augmentation - mixup')
-flags.DEFINE_enum('data_aug_mix', 'cutmix', ['mixup', 'cutmix', 'None'], 'data augmentation - mixup')
+# 'nda' (26-09-30): DVS 전용 프레임 증강 (datasets/cifar10_dvs.py). 이미지 로더(image_cls)는
+# mixup/cutmix 만 보므로 'nda' 는 거기서 'None' 과 같다. Surro 는 enum 에 없이 conf 대입으로
+# 넣는다 (absl 은 속성 대입 때 enum 을 검사하지 않는다) -- 여기서는 목록에 올려 둔다.
+# 기본값 'cutmix' 는 그대로다.
+flags.DEFINE_enum('data_aug_mix', 'cutmix', ['mixup', 'cutmix', 'None', 'nda'], 'data augmentation - mixup')
 flags.DEFINE_integer('mix_off_iter', -1, 'mix off iter (default: -1 (not apply mix off)')
 #flags.DEFINE_float('mix_alpha', 0.5, 'alpha for mix augmentation')
 #TODO: set default value

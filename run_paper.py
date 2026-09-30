@@ -30,6 +30,23 @@
                 abl_noinv 는 maxnorm_plain 가지라 group·vmem 을 안 읽어 세 요소가 동시에
                 빠진다 -- 어블레이션 표의 '반전의 효과'는 이 팔이다. knob 은 rho
     abl_nolr    제안법에서 loss-ratio 만 끔  (고정 lambda. knob 이 rho 가 아니라 lambda)
+                (위 abl_* 다섯 팔은 옛 제안법 prop(=ours_intra_ch)에서 뺀 것이다)
+
+    [ours_layer_w1 어블레이션 -- 09-23 확정 제안법 ours_layer_w1 에서 한 요소씩 뺀다]
+    lw1_novmem  ours_layer_w1 에서 vmem 만 끔 (gain=0)   knob 은 rho
+    lw1_nofinal ours_layer_w1 에서 final_step 만 끔       knob 은 rho
+    lw1_nolr    ours_layer_w1 에서 loss-ratio 만 끔       knob 은 **lambda** (고정)
+    lw1_noinv   ours_layer_w1 에서 1- 반전만 끔 (no_inv)  knob 은 rho
+
+    [규제 시작 지연 -- 원 방법과 전부 같고 loss-ratio 의 start_ep 만 다르다. knob 은 rho]
+    ours_w1_st30        ours_w1 + reg_spike_loss_ratio_start_ep=30
+    ours_w1_st60        ours_w1 + start_ep=60
+    ours_ch_st30        ours_ch + start_ep=30
+    ours_ch_st60        ours_ch + start_ep=60
+    ours_layer_w1_st30  ours_layer_w1 + start_ep=30
+    ours_layer_w1_st60  ours_layer_w1 + start_ep=60
+                (lambda 는 0-기준 에폭 start_ep 끝까지 0 이고 그 다음 에폭부터 rho*L_task/R 로
+                 한 번에 들어간다 -- 램프 없음. 기존 팔(start_ep=0)도 첫 에폭은 lambda=0 이다)
 
 **선별** — 조건당 5런을 돌리고 4개를 쓴다. 배제 규칙은 제안법과 비교군에 똑같이 적용한다:
     (1) 310에폭 미완주  (2) S30/S1 < 0.19  (3) 그래도 5개 남으면 val_acc 상위 4개.
@@ -186,6 +203,57 @@ def METHODS(name, knob):
         return {**BASE, **WTA, **VMEM, 'reg_spike_out_sc_maxnorm': False,
                 'reg_spike_out_sc_maxnorm_plain': True,
                 'reg_spike_final_step': True, **RATIO(knob)}
+    # --- ours_layer_w1 어블레이션 (09-26) ---------------------------------------------
+    # 제안법이 09-23 에 prop 에서 ours_layer_w1 로 바뀌었는데 위 abl_* 는 전부 prop 에서
+    # 뺀 것이라 어블레이션 표가 제안법과 안 맞는다. 아래 네 팔은 METHODS('ours_layer_w1')
+    # 에서 시작해 **한 요소만** 덮어쓴다 (group='none', w1 은 그대로 남는다).
+    # 위 abl_* 는 재현이 걸려 있어 건드리지 않는다.
+    if name == 'lw1_novmem':
+        # abl_novmem 과 같은 방식: gain=0 이면 neurons.py 가 readiness 를 아예 안 더한다.
+        # silent_only 는 gain=0 에서 안 읽히지만 abl_novmem 과 맞춰 False 로 둔다.
+        return {**METHODS('ours_layer_w1', knob), 'reg_spike_vmem_gain': 0.0,
+                'reg_spike_vmem_silent_only': False}
+    if name == 'lw1_nofinal':
+        # 벌점 대상이 T 합(final_step)이 아니라 매 스텝 spike 가 된다 (neurons.py spike_reg).
+        # w1 경로는 accum_loss 와만 배타이고 BASE 가 accum 을 끄므로 문제없다.
+        return {**METHODS('ours_layer_w1', knob), 'reg_spike_final_step': False}
+    if name == 'lw1_nolr':
+        # loss-ratio 제거, 고정 lambda. knob 이 rho 가 아니라 **lambda** 다.
+        # RATIO 가 넣은 키를 전부 지우고 FIXED 로 바꾼다 -- l2_lr 과 같은 이유로, 제어기
+        # 키를 남겨두면 플래그 하나가 잘못 켜졌을 때 lambda 값이 rho 로 조용히 읽힌다.
+        # 결과 키 집합은 abl_nolr 과 같은 모양이다 (target/start_ep 없음, out_const 있음).
+        base = {k: v for k, v in METHODS('ours_layer_w1', knob).items()
+                if k not in RATIO(knob)}
+        return {**base, **FIXED(knob)}
+    if name == 'lw1_noinv':
+        # abl_noinv_wc 와 같은 플래그: 1-maxnorm 가지를 그대로 타고 sc_rate = sc_norm.
+        # group='none'(층 전체 max)·vmem(silent_only)·final_step·loss-ratio·w1 은 유지된다.
+        # neurons.py 확인 사항:
+        #  - reg_spike_shape_beta 는 no_inv 분기에서 읽히지 않는다 (1- 가 없으면 beta 는
+        #    단순 배율이라 loss-ratio 가 lambda 로 되푼다). 기본 1.0 그대로 둔다.
+        #  - w1 경로(layers.l2_norm_wta_rev_w1)는 (spike_reg, sc_rate) 를 받아 안에서 곱할
+        #    뿐 sc_rate 의 모양을 가정하지 않는다. no_inv 와 같이 켜도 forward 는
+        #    ||spike*sc_norm||, spike 기울기는 sc_norm/||x|| (w^1) 이다. 배타 assert 는
+        #    accum_loss·inv_s 두 개뿐이고 여기서는 둘 다 꺼져 있다.
+        #  - 층 전체가 침묵하면 x 가 전부 0 이라 기울기 0 (condition 분기) -- 기존과 같다.
+        #    침묵 뉴런은 vmem readiness 만큼 sc_norm in [0,1) 을 받아 정확히 0 은 아니다.
+        #  - shape_mean1 은 켜지 않는다 (neurons.py 주석: no_inv 와 같이 켜면 배율이 튄다).
+        return {**METHODS('ours_layer_w1', knob), 'reg_spike_maxnorm_no_inv': True}
+    # --- 규제 시작 지연 (09-30) --------------------------------------------------------
+    # 원 방법과 **모든 설정이 같고** reg_spike_loss_ratio_start_ep 만 30/60 으로 덮는다.
+    # proc.py 의 loss-ratio 갱신(spike_count_epoch_end)이 확인한 동작:
+    #  - 에폭 끝(Keras 0-기준 epoch)마다 다음 에폭의 lambda 를 정한다. epoch < start_ep 이면 0.
+    #    초기값도 0 (model.py adaptive_lambda) 이라 0-기준 0..start_ep 에폭은 lambda=0,
+    #    0-기준 start_ep+1 (로그의 'Epoch start_ep+2/310') 부터 규제가 걸린다.
+    #    기존 팔(start_ep=0)의 첫 규제 에폭이 'Epoch 2' 이므로 정확히 start_ep 에폭 늦는다.
+    #  - 켜질 때는 lambda = rho*L_task/R 로 한 번에 점프한다 (램프 없음). 완화 장치는
+    #    reg_spike_lr_brake(성장 상한 포함)뿐인데 BASE 가 끈다.
+    #  - lambda=0 인 동안에도 sc_loss_snap(R)은 lambda 곱하기 전 값으로 찍히고 reg CSV·reg_R
+    #    로그도 그대로 나온다. add_loss 는 0*R 이라 기울기가 없다.
+    if name in ('ours_w1_st30', 'ours_w1_st60', 'ours_ch_st30', 'ours_ch_st60',
+                'ours_layer_w1_st30', 'ours_layer_w1_st60'):
+        src, st = name.rsplit('_st', 1)
+        return {**METHODS(src, knob), 'reg_spike_loss_ratio_start_ep': int(st)}
     raise SystemExit(f'모르는 방법: {name}')
 
 
@@ -395,8 +463,8 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 l2 l2_lr sm bpsr ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr')
-    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_layer/ours_layer_w1/l2_lr/abl(nolr 제외) 은 rho, sm/l2/bpsr/abl_nolr 은 lambda, base 는 '-'")
+    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 l2 l2_lr sm bpsr ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60')
+    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_layer/ours_layer_w1/*_st30·*_st60/l2_lr/abl(nolr 제외)/lw1(nolr 제외) 은 rho, sm/l2/bpsr/abl_nolr/lw1_nolr 은 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
     ap.add_argument('--dir', default='_paper', help='스윕 디렉토리')
@@ -412,7 +480,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 l2 l2_lr sm bpsr ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr')
+        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 l2 l2_lr sm bpsr ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 

@@ -6,6 +6,7 @@ import events_tfds.events.cifar10_dvs
 #from events_tfds.vis.image import as_frames
 #from events_tfds.vis.image import as_frame
 from datasets.events.image import as_frames
+from datasets.events.image import as_frames_for_nda
 from datasets.events.image import as_frame
 # from events_tfds.vis.anim import animate_frames
 
@@ -81,8 +82,61 @@ def load():
             frame = as_frames(events,labels,shape=image_shape,num_frames=num_frames,augmentation=True)
             #print(labels.numpy())
 
-    #
-    train_ds = train_ds.map(lambda events,labels: as_frames(events,labels,shape=image_shape,num_frames=num_frames,augmentation=True))
+    # nda (26-09-30): Surro/datasets/cifar10_dvs.py 83-127행을 그대로 옮겼다 (VGGSNN-DVS 레시피).
+    # 프레임마다 roll(+-3px) / rotate(+-15도) / shear(+-15도) / cutout(16x16) 중 하나를 1/4 확률로
+    # 고른다 (넷 다 안 하는 경우는 없다). 입력 프레임은 as_frames_for_nda 가 resize + 좌우 flip 만 한 것.
+    # randaug_en / rand_erase_en 은 Surro 에서도 이 경로가 읽지 않는다 (image_cls 경로 전용).
+    # 'nda' 가 아니면 아래 else 는 기존 경로 그대로다 -- 기존 DVS 런과 같은 동작.
+    if conf.data_aug_mix == 'nda':
+        # tensorflow_addons 는 nda 에서만 필요하다. 기존 경로가 이 import 에 기대지 않도록 안에 둔다.
+        import tensorflow_addons as tfa
+
+        @tf.function
+        def nda(images, labels):
+            def augment_single_frame(img):
+                # roll
+                def roll_fn():
+                    dx = tf.random.uniform([], -3, 4, dtype=tf.int32)
+                    dy = tf.random.uniform([], -3, 4, dtype=tf.int32)
+                    return tf.roll(img, shift=[dx, dy], axis=[0, 1])
+
+                # rotate
+                def rotate_fn():
+                    angle = tf.random.uniform([], -15, 15) * 3.141592 / 180.0
+                    return tfa.image.rotate(img, angles=angle, interpolation='BILINEAR')
+
+                # shear
+                def shear_fn():
+                    level = tf.random.uniform([], -15.0, 15.0)
+                    rad = level * 3.141592 / 180.0
+                    transform = [1.0, tf.math.tan(rad), 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+                    return tfa.image.transform(img, transform, interpolation='BILINEAR')
+
+                # cutout
+                def cutout_fn():
+                    return tfa.image.random_cutout(img[tf.newaxis, ...], mask_size=(16, 16))[0]
+
+                choice = tf.random.uniform([], 0, 4, dtype=tf.int32)
+                img = tf.cond(tf.equal(choice, 0), roll_fn, lambda: img)
+                img = tf.cond(tf.equal(choice, 1), rotate_fn, lambda: img)
+                img = tf.cond(tf.equal(choice, 2), shear_fn, lambda: img)
+                img = tf.cond(tf.equal(choice, 3), cutout_fn, lambda: img)
+                return img
+
+            images = tf.map_fn(lambda sample: tf.map_fn(augment_single_frame, sample), images)
+            return images, labels
+
+        train_ds = train_ds.map(
+            lambda events, labels: as_frames_for_nda(events, labels, dataset_name='CIFAR10_DVS', shape=image_shape, num_frames=num_frames))
+
+        sample = next(iter(train_ds))
+        images, labels = sample
+        print(f"Shape of the first image: {images.shape}")
+        # 배치 뒤에 nda 를 건다 (Surro 와 같은 순서). drop_remainder 는 아래 else 와 같은 이유.
+        train_ds = train_ds.batch(batch_size, drop_remainder=True)
+        train_ds = train_ds.map(lambda images, labels: nda(images, labels))
+    else:
+        train_ds = train_ds.map(lambda events,labels: as_frames(events,labels,shape=image_shape,num_frames=num_frames,augmentation=True))
     # todo - cutmix
 #    if config.flags.data_aug_mix == 'mixup' or config.flags.data_aug_mix == 'cutmix':
 #        train_ds_1 = train_ds.map(lambda events,labels: as_frames(events,labels,shape=image_shape,num_frames=num_frames,augmentation=True))
@@ -101,7 +155,8 @@ def load():
     # drop_remainder: 모델 Input 이 batch_size 고정이라 마지막 부분 배치(9000 % 32 = 8)가 들어오면
     # 모양이 안 맞는다. Surro 의 VGGSNN 레시피(batch 32)가 같은 이유로 켠다 (26-09-29).
     # batch 100 이면 9000/1000 이 나누어떨어져 아무것도 안 버린다 (기존 동작 그대로).
-    train_ds = train_ds.batch(batch_size, drop_remainder=True)
+    if conf.data_aug_mix != 'nda':   # nda 는 위에서 이미 batch 했다
+        train_ds = train_ds.batch(batch_size, drop_remainder=True)
     train_ds = train_ds.prefetch(num_parallel)
 
     #valid_ds = valid_ds.map(lambda events,labels: as_frame(events,labels,shape=image_shape))

@@ -121,6 +121,11 @@ def model_builder(
     lr_min=1E-5
 
     if lr_schedule == 'COS':
+        # CIFAR10-DVS 만 워밍업 10에폭 (26-09-30, Surro/lib_snn/model_builder.py 115-124행).
+        # Surro 의 DVS 분기는 warmup_epochs 말고는 아래 세 줄과 같다 -- 학습률 시작/목표/하한은
+        # 공통. 다른 데이터셋은 20 그대로다.
+        if conf.dataset == 'CIFAR10_DVS':
+            warmup_epochs = 10
         learning_rate = conf.learning_rate_init # initial
         warmup_target = conf.learning_rate
         lr_min=conf.learning_rate_init

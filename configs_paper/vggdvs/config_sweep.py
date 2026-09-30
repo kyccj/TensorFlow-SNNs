@@ -7,8 +7,11 @@
     플래그는 run_paper.py 가 config.set() 앞에 덮어쓴다.
     학습 레시피는 Surro(config_snn_training_surro.py 의 VSNN_DVS)를 따른다:
       T=4, 48x48, batch 32, 200 epoch, AdamW + COS (1e-5 -> 6e-3), wd 2e-2, label smoothing 0.1,
-      avg pooling. 증강은 이 저장소 DVS 로더(datasets/cifar10_dvs.py)의 기본값
-      (pad 3 + random crop + 좌우/상하 flip) 이다 -- Surro 의 'nda' 는 옮기지 않았다.
+      avg pooling, 워밍업 10에폭 (lib_snn/model_builder.py 의 CIFAR10_DVS 분기).
+      증강은 Surro 의 'nda' (26-09-30 이식, datasets/cifar10_dvs.py): resize + 좌우 flip 뒤
+      프레임마다 roll/rotate/shear/cutout 중 하나. 09-29~30 에 돈 vggdvs base 시드 1-4 는
+      nda 이식 전 기본 증강(pad 3 + random crop + 좌우/상하 flip, 워밍업 20에폭)이다 -- 섞지 않는다.
+      surrogate 는 asym(0.6) 유지 (Surro 원래 레시피와 다르다, 사용자 결정).
     _*/ 는 .gitignore 대상이라 기존 원본들은 sejong 에 pull 로 안 간다. 이 파일은
     configs_paper/ 아래에 두어 git 으로 두 서버가 같은 원본을 받는다.
 '''
@@ -177,11 +180,12 @@ conf.mix_off_iter = 500*200
 conf.mix_alpha = 0.5
 
 conf.randaug_en = True
-# DVS 로더는 randaug / rand_erase / cutmix 를 읽지 않는다 (image_cls 경로 전용).
+# DVS 로더는 randaug / rand_erase / cutmix 를 읽지 않는다 (image_cls 경로 전용). Surro 도 같다.
 # 켜 둔 채면 체크포인트 경로명에 _ra _re _cm 이 붙어 안 한 증강을 한 것처럼 보이므로 끈다.
 # 학습에는 영향이 없다.
+# data_aug_mix='nda' 는 DVS 로더가 읽는 유일한 값이다 (Surro config_snn_training_surro.py 399행).
 conf.randaug_en = False
-conf.data_aug_mix = 'None'
+conf.data_aug_mix = 'nda'
 conf.randaug_mag = 0.9
 conf.randaug_mag_std = 0.4
 conf.randaug_n = 1

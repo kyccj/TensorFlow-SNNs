@@ -203,3 +203,95 @@ def as_frames(
     #images = tf.tensor_scatter_nd_update(images,idxs,colors)
 
     return (images, labels)
+
+
+#
+# nda 경로용 (26-09-30). Surro/datasets/events/image.py 의 as_frames_for_nda 를 그대로 옮겼다.
+# as_frames 와 달리 pad+crop/상하 flip 을 하지 않고 resize + 좌우 flip 만 한다 --
+# 나머지 증강(roll/rotate/shear/cutout)은 datasets/cifar10_dvs.py 의 nda() 가 배치 단위로 한다.
+def as_frames_for_nda(
+    events,
+    labels,
+    dt=None,
+    num_frames=None,
+    shape=None,
+    dataset_name='None',
+    flip_up_down=False,
+    augmentation=False,
+):
+
+    #
+    conf.input_data_time_dim = True
+
+    #
+    if dataset_name=='CIFAR10_DVS':
+        num_class=10
+    elif dataset_name=='DVS_GESTURE':
+        num_class = 11
+    else:
+        assert False
+    coords = events['coords']
+    polarity = events['polarity']
+    time = events['time']
+
+    coords = tf.cast(coords, dtype=tf.int32)
+    time = tf.cast(time, dtype=tf.int32)
+
+    #if time.size == 0:
+    if time.shape[0]==0:
+        raise ValueError("time must not be empty")
+
+    t_start = time[0]
+    t_end = time[-1]
+    if dt is None:
+        #dt = int((t_end - t_start) // (num_frames - 1))
+        dt = int((t_end - t_start) // num_frames)
+    else:
+        num_frames = (t_end - t_start) // dt + 1
+
+    if shape is None:
+        #shape = np.max(coords, axis=0)[-1::-1] + 1
+        assert False
+    else:
+        #shape = shape[-1::-1]
+        image_shape = (num_frames, *shape)
+
+    #frame_data = np.zeros((num_frames, *shape, 3), dtype=np.uint8)
+
+    #images = tf.zeros(image_shape,dtype=tf.int32)
+    images = tf.zeros(image_shape,dtype=tf.float32)
+
+    #if polarity is None:
+    #    colors = WHITE
+    #else:
+    #    colors = np.where(polarity[:, np.newaxis], RED, GREEN)
+
+    colors = tf.where(tf.expand_dims(polarity,1),RED,GREEN)
+
+    idxs_frame = tf.math.floordiv(tf.subtract(time,t_start),dt)
+    idxs_frame = tf.where(tf.equal(idxs_frame,num_frames),num_frames-1,idxs_frame)
+    idxs_frame = tf.expand_dims(idxs_frame,axis=1)
+
+    # (frame, x, y, color)
+    idxs = tf.concat([idxs_frame,coords],1)
+
+    #images = tf.tensor_scatter_nd_update(images,idxs,colors)
+    images = tf.tensor_scatter_nd_add(images,idxs,colors)
+
+    # resize image
+    if conf.model=='Spikformer':
+        s=128
+        crop_size = 134
+    else:
+        s=conf.cifar10_dvs_img_size
+        crop_size =conf.cifar10_dvs_crop_img_size
+    #crop_size = 50
+
+    if conf.model == 'Spikformer':
+        images = images
+    else:
+        images = tf.image.resize(images,(s,s),method='bilinear')   # VGG, ResNet
+
+    images = tf.image.random_flip_left_right(images)
+    labels = tf.one_hot(labels, num_class)
+    return (images, labels)
