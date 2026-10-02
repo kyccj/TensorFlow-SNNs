@@ -17,6 +17,8 @@
     ours_ch     prop 와 전부 같고 max 범위만 채널 합끼리 ('channel'). knob 은 rho
     ours_ch_b7  ours_ch + shape_beta=0.7 (1등 채널도 w=0.3 을 받는다). knob 은 rho
     ours_ch_b4  ours_ch + shape_beta=0.4. knob 은 rho
+    ours_ch_taylor ours_ch 와 전부 같고 채널 서열만 Taylor 중요도 |sum (dL/ds)*s| 의 EMA 로 매긴다
+                (규제 항은 여전히 스파이크. 26-10-02). knob 은 rho
     sm          1-softmax + 고정 lambda        (내부 최강 기준선)
     l2          plain L2 + 고정 lambda         (문헌 기준선. reg_spike_out_sc=False 로 두면
                                                 neurons.py:1238 의 `else: # old - previous work`
@@ -132,6 +134,12 @@ def METHODS(name, knob):
         # 이 스윕은 lambda 스윕으로 위장되지 않는다 (그래서 shape_mean1 은 켜지 않는다).
         beta = 0.7 if name.endswith('b7') else 0.4
         return {**METHODS('ours_ch', knob), 'reg_spike_shape_beta': beta}
+    if name == 'ours_ch_taylor':
+        # 26-10-02 ours_ch 와 전부 같고 채널 서열의 기준만 다르다: 스파이크 공간합 대신
+        # Taylor 중요도 imp_c = |sum_{i in c} (dL/ds_i)*s_i| (배치 평균, EMA). 벌점을 받는 양
+        # ||s*w||_2 는 그대로 스파이크고, w = 1 - imp/max imp 로 1등 채널이 면제되는 것도 같다.
+        # '많이 쏘는 채널' 대신 '손실에 기여하는 채널'을 보호하는지 묻는 팔이다.
+        return {**METHODS('ours_ch', knob), 'reg_spike_ch_importance': "'taylor'"}
     if name == 'sm':
         return {**BASE, **WTA, 'reg_spike_out_sc_sm': True, 'reg_spike_out_sc_maxnorm': False,
                 'reg_spike_final_step': False, **FIXED(knob)}
@@ -463,8 +471,8 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 l2 l2_lr sm bpsr ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60')
-    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_layer/ours_layer_w1/*_st30·*_st60/l2_lr/abl(nolr 제외)/lw1(nolr 제외) 은 rho, sm/l2/bpsr/abl_nolr/lw1_nolr 은 lambda, base 는 '-'")
+    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor l2 l2_lr sm bpsr ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60')
+    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_ch_taylor/ours_layer/ours_layer_w1/*_st30·*_st60/l2_lr/abl(nolr 제외)/lw1(nolr 제외) 은 rho, sm/l2/bpsr/abl_nolr/lw1_nolr 은 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
     ap.add_argument('--dir', default='_paper', help='스윕 디렉토리')
@@ -480,7 +488,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 l2 l2_lr sm bpsr ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60')
+        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor l2 l2_lr sm bpsr ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 

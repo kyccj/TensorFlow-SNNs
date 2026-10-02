@@ -271,6 +271,15 @@ class Neuron(tf.keras.layers.Layer):
         if conf.reg_spike_log_detail or conf.reg_spike_loss_ratio:
             self.sc_loss_snap = tf.Variable(0.0, trainable=False, name="sc_loss_snap")
 
+        # 26-10-02 reg_spike_ch_importance='taylor': 채널 Taylor 중요도의 EMA 를 담는 비학습 변수.
+        # 플래그가 기본('spike')이면 만들지 않는다 -- 그래서 기존 런의 그래프·가중치 파일이 그대로다.
+        # 4D([b,H,W,C]) 은닉층만. 값은 call() 끝의 _ch_taylor_tap backward 에서 채워진다.
+        if conf.reg_spike_ch_importance == 'taylor' and self.loc == 'HID' and len(self.dim) == 4:
+            assert conf.reg_spike_maxnorm_group == 'channel', \
+                "reg_spike_ch_importance='taylor' 는 reg_spike_maxnorm_group='channel' 에서만 읽힌다"
+            self.ch_imp = tf.Variable(tf.zeros([self.dim[-1]], dtype=tf.float32),
+                                      trainable=False, name="ch_imp")
+
         if conf.reg_spike_log_detail:
             self.sc_rate_snap = tf.Variable(0.0, trainable=False, name="sc_rate_snap")
             self.firing_rate_snap = tf.Variable(0.0, trainable=False, name="firing_rate_snap")
@@ -987,6 +996,16 @@ class Neuron(tf.keras.layers.Layer):
                                 sc_norm = tf.math.divide_no_nan(scp, sc_max)
                             elif mg == 'channel' and len(scp.shape) == 4:
                                 ch = tf.reduce_sum(scp, axis=[1, 2], keepdims=True)   # [b,1,1,C]
+                                if hasattr(self, 'ch_imp'):
+                                    # 26-10-02 taylor: 채널 **서열(w)만** Taylor 중요도 EMA 로 바꾼다.
+                                    # 벌점을 받는 양은 아래 sc_loss = spike_reg*sc_rate 그대로 스파이크다.
+                                    # ch_imp 는 직전 스텝들의 backward 에서 기록된 값이라 stop_gradient
+                                    # 와 같다 (변수 read). 배치 전체가 같은 w 를 받는다.
+                                    # 기록 전(전부 0)에는 위의 스파이크 공간합을 그대로 쓴다.
+                                    # 이 경로에서는 vmem readiness 가 서열에 안 들어간다 (scp 를 안 읽음).
+                                    imp = tf.cast(tf.reshape(self.ch_imp, [1, 1, 1, -1]), ch.dtype)
+                                    imp = tf.broadcast_to(imp, tf.shape(ch))
+                                    ch = tf.where(tf.reduce_max(self.ch_imp) > 0.0, imp, ch)
                                 ch_max = tf.reduce_max(ch, axis=3, keepdims=True)
                                 sc_norm = tf.broadcast_to(tf.math.divide_no_nan(ch, ch_max),
                                                           tf.shape(scp))
@@ -1428,8 +1447,34 @@ class Neuron(tf.keras.layers.Layer):
         if conf.debug_neuron_input:
             self.inputs = self.inputs.write(t - 1, inputs)
 
+        # 26-10-02 taylor: 다음 층으로 나가는 스파이크에 항등 연산을 끼워 backward 에서
+        # 채널 Taylor 중요도를 기록한다. 규제 항은 spike / self.out.read() 를 따로 읽으므로
+        # 여기 g 에는 규제 항 자기 몫의 기울기가 안 들어온다 (하위 층 규제 몫은 들어온다).
+        # ch_imp 가 없으면(기본 'spike') 이 줄은 아무 연산도 추가하지 않는다.
+        if hasattr(self, 'ch_imp'):
+            out_ret = self._ch_taylor_tap(out_ret)
+
         #return out_ret, grad
         return out_ret
+
+    def _ch_taylor_tap(self, x):
+        # forward: x 그대로. backward: 들어온 g 로 imp_c = mean_b |sum_{h,w} g*x| ([C]) 를 구해
+        # ch_imp <- ema*ch_imp + (1-ema)*imp 로 갱신하고 g 를 그대로 돌려준다.
+        # 갱신을 반환 기울기에 control_dependencies 로 묶어 tf.function 안에서도 실행되게 한다.
+        var = self.ch_imp
+        ema = float(conf.reg_spike_ch_imp_ema)
+
+        @tf.custom_gradient
+        def _tap(x):
+            def grad(g):
+                gx = tf.cast(g, tf.float32) * tf.cast(x, tf.float32)
+                imp = tf.reduce_mean(tf.abs(tf.reduce_sum(gx, axis=[1, 2])), axis=0)   # [C]
+                upd = var.assign(ema * var + (1.0 - ema) * imp)
+                with tf.control_dependencies([upd]):
+                    return tf.identity(g)
+            return tf.identity(x), grad
+
+        return _tap(x)
 
     # initialization
     def init(self):

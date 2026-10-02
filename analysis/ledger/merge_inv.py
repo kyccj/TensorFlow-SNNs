@@ -3,7 +3,7 @@ import csv, json, os, re, sys, time
 D = sys.argv[1]
 KEY2ARM = {'base':'baseline','prop':'ours_intra_ch','ours_w1':'ours_w1','ours_layer':'ours_layer',
   'ours_layer_w1':'ours_layer_w1','ours_ch':'ours_inter_ch','ours_ch_b7':'ours_ch_b7',
-  'ours_ch_b4':'ours_ch_b4','l2':'plain L2','l2_lr':'plain L2 + rho','bpsr':'BPSR','sm':'1-softmax',
+  'ours_ch_b4':'ours_ch_b4','ours_ch_taylor':'ours_inter_ch (taylor)','l2':'plain L2','l2_lr':'plain L2 + rho','bpsr':'BPSR','sm':'1-softmax',
   'abl_novmem':'- vmem','abl_nofinal':'- final_step','abl_noinv':'- 1- inversion',
   'abl_noinv_wc':'- 1- inversion (wc)','abl_nolr':'- loss-ratio',
   'lw1_novmem':'lw1 - vmem','lw1_nofinal':'lw1 - final_step','lw1_nolr':'lw1 - loss-ratio','lw1_noinv':'lw1 - 1- inversion',
