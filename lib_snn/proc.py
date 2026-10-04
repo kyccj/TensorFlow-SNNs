@@ -380,6 +380,12 @@ def preproc_epoch_train_ann(self, epoch):
 def preproc_epoch_train_snn(self, epoch):
     spike_count_epoch_init(self)
 
+    # 26-10-04 Suetake 대조군: 첫 에폭 시작에 fan-out psi_l 을 계산해 Neuron 에 넣고,
+    # 매 에폭 lambda 램프 계수를 갱신한다. 플래그가 꺼져 있으면 아무것도 안 한다.
+    if conf.reg_spike_suetake:
+        from lib_snn import suetake as _sue
+        _sue.epoch_begin(self.model, epoch)
+
     # test
     #if epoch % 100==0 and epoch != 0:
     ##if epoch>0:

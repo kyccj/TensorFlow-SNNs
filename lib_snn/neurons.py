@@ -280,6 +280,13 @@ class Neuron(tf.keras.layers.Layer):
             self.ch_imp = tf.Variable(tf.zeros([self.dim[-1]], dtype=tf.float32),
                                       trainable=False, name="ch_imp")
 
+        # 26-10-04 reg_spike_suetake: 이 층의 fan-out psi_l (층 단위 상수). 학습 시작 때
+        # lib_snn/suetake.py 가 Keras 그래프에서 계산해 assign 한다. Variable 인 이유는 그래프가
+        # 그보다 먼저 추적돼도 값이 0 으로 굳지 않게 하려는 것. 플래그가 꺼져 있으면 안 만든다
+        # -- 기존 런의 그래프·가중치 파일이 그대로다. 은닉층만 (규제 블록이 HID 에서만 돈다).
+        if conf.reg_spike_suetake and self.loc == 'HID':
+            self.suetake_psi = tf.Variable(0.0, trainable=False, name="suetake_psi")
+
         if conf.reg_spike_log_detail:
             self.sc_rate_snap = tf.Variable(0.0, trainable=False, name="sc_rate_snap")
             self.firing_rate_snap = tf.Variable(0.0, trainable=False, name="firing_rate_snap")
@@ -814,7 +821,11 @@ class Neuron(tf.keras.layers.Layer):
                 #print(tf.size(tf.shape(self.out)))
                 #dim = tf.size(tf.shape(self.out))
 
-                if conf.reg_spike_out_sc:
+                # 26-10-04 Suetake 대조군: 경쟁·maxnorm·vmem·wta_rev·loss-ratio 를 하나도 안 읽는
+                # 별도 가지. 플래그가 꺼져 있으면 아래 기존 if/else 가 예전 그대로 돈다.
+                if conf.reg_spike_suetake:
+                    self._suetake_reg(spike, t)
+                elif conf.reg_spike_out_sc:
                     if not hasattr(self, "_reduce_axis"):
                         n_dim = len(self.dim)
                         self._reduce_axis= [i for i in range(1,n_dim)]
@@ -1456,6 +1467,38 @@ class Neuron(tf.keras.layers.Layer):
 
         #return out_ret, grad
         return out_ret
+
+    def _suetake_reg(self, spike, t):
+        # 26-10-04 Suetake et al. (2302.01500) synaptic interaction penalty.
+        #   Omega_syn = psi_l * sum_i S_i^p / B,  S = sum_t s_t,  loss += lambda * ramp * Omega_syn
+        # p=1: 선형이라 매 타임스텝 psi*sum(s_t)/B 를 더하면 합이 psi*S/B 다 (BPSR·plain L2 가지와
+        #      같은 호출 방식). p=2: t=T 에서 TensorArray 로 S 를 만들어 한 번 더한다 (final_step 과
+        #      같은 방법 -- self.spike_count 는 assign 이라 기울기가 끊긴다).
+        # 기울기는 spike(=surrogate 경로)로만 흐른다. 별도 custom_gradient 없음 -- plain L2 와 같다.
+        # 배치 평균: task loss(CE) 가 배치 평균이라 같은 눈금에 둔다. plain L2 는
+        # sqrt(배치 전체 합) 이라 배치 평균이 아니다.
+        assert not conf.reg_spike_out_sc and not conf.reg_spike_loss_ratio, \
+            'reg_spike_suetake 는 sc 가지·loss-ratio 와 같이 켜지 않는다 (순수 대조군)'
+        from lib_snn import suetake as _sue
+        p = int(conf.reg_spike_suetake_p)
+        if p == 1:
+            s = spike
+        else:
+            if t != conf.time_step:
+                return
+            s = tf.add_n([self.out.read(_i) for _i in range(conf.time_step)])
+        s = tf.cast(s, tf.float32)
+        b = tf.cast(tf.shape(s)[0], tf.float32)
+        sp = s if p == 1 else tf.math.pow(s, float(p))
+        omega = self.suetake_psi * tf.reduce_sum(sp) / b
+        # 규제 원값(lambda 곱하기 전)을 reg_detail.csv 의 sc_loss 열로 남긴다. p=1 은 매 스텝
+        # 불리므로 t==1 에 assign, 이후 assign_add (sc 가지와 같은 누적 규칙).
+        if hasattr(self, 'sc_loss_snap'):
+            if p != 1 or t == 1:
+                self.sc_loss_snap.assign(omega)
+            else:
+                self.sc_loss_snap.assign_add(omega)
+        self.add_loss(omega * (conf.reg_spike_out_const * _sue.ramp))
 
     def _ch_taylor_tap(self, x):
         # forward: x 그대로. backward: 들어온 g 로 imp_c = mean_b |sum_{h,w} g*x| ([C]) 를 구해

@@ -25,6 +25,9 @@
                                                 가지로 가서 l2_norm(spike) 이 된다)
     l2_lr       plain L2 + loss-ratio          (l2 와 전부 같고 lambda 만 제어기가 푼다. knob 은 rho.
                                                 제어기의 몫과 제안법 나머지의 몫을 가르는 대조군)
+    suetake     Suetake et al. (arXiv 2302.01500) synaptic interaction penalty + 고정 lambda
+                (lambda * sum_l psi_l * sum_i S_i / B, psi_l = fan-out, lambda 는 에폭 비례 선형
+                 램프. 경쟁·maxnorm·vmem·wta_rev·loss-ratio 없음. 26-10-04). knob 은 lambda
     abl_nofinal 제안법에서 final_step 만 끔     (시점의 기여)
     abl_novmem  제안법에서 vmem 만 끔 (gain=0)  (막전위의 기여)
     abl_noinv   제안법에서 1- 반전만 끔         (maxnorm_plain = sc/max. 이름의 근거)
@@ -39,6 +42,12 @@
     lw1_nofinal ours_layer_w1 에서 final_step 만 끔       knob 은 rho
     lw1_nolr    ours_layer_w1 에서 loss-ratio 만 끔       knob 은 **lambda** (고정)
     lw1_noinv   ours_layer_w1 에서 1- 반전만 끔 (no_inv)  knob 은 rho
+
+    [ours_ch 어블레이션 -- ours_inter_ch(run 키 ours_ch) 에서 한 요소씩 뺀다 (26-10-04)]
+    ch_novmem   ours_ch 에서 vmem 만 끔 (gain=0)          knob 은 rho
+    ch_nofinal  ours_ch 에서 final_step 만 끔            knob 은 rho
+    ch_noinv    ours_ch 에서 1- 반전만 끔 (no_inv)       knob 은 rho
+    ch_nolr     ours_ch 에서 loss-ratio 만 끔            knob 은 **lambda** (고정)
 
     [규제 시작 지연 -- 원 방법과 전부 같고 loss-ratio 의 start_ep 만 다르다. knob 은 rho]
     ours_w1_st30        ours_w1 + reg_spike_loss_ratio_start_ep=30
@@ -165,6 +174,19 @@ def METHODS(name, knob):
         return {**BASE, 'reg_spike_out_sc': False, 'reg_spike_out_norm': False,
                 'reg_spike_out_norm_sq': False, 'reg_spike_out_bpsr': True,
                 'reg_spike_final_step': False, **FIXED(knob)}
+    if name == 'suetake':
+        # 26-10-04 Suetake et al. (arXiv 2302.01500) 의 synaptic interaction penalty, 순수 대조군.
+        # lambda * sum_l psi_l * sum_i S_i / B (p=1, S = T 합 스파이크, B 배치 평균),
+        # psi_l = 층 l 뉴런 하나의 fan-out (lib_snn/suetake.py 가 학습 시작 때 그래프에서 계산).
+        # lambda 는 knob 고정값에 원 논문의 에폭 비례 선형 램프 (epoch+1)/E 를 곱한다.
+        # l2/bpsr 과 같은 패턴: sc 가지를 끄고 옛 가지 플래그(norm·norm_sq·bpsr)도 다 꺼서
+        # neurons.py 의 suetake 가지로만 간다 (그 가지는 경쟁·maxnorm·vmem·wta_rev 를 안 읽는다).
+        # final_step 은 끈다 -- p=1 은 매 타임스텝 psi*s_t 를 더해 합이 psi*S 가 된다.
+        return {**BASE, 'reg_spike_out_sc': False, 'reg_spike_out_norm': False,
+                'reg_spike_out_norm_sq': False, 'reg_spike_out_bpsr': False,
+                'reg_spike_suetake': True, 'reg_spike_suetake_p': 1,
+                'reg_spike_suetake_ramp': True,
+                'reg_spike_final_step': False, **FIXED(knob)}
     if name == 'ours_layer':
         # 제안법에서 채널 내 max 를 **층 전체 max** 로 바꾼다 (maxnorm_group='none').
         # within_channel 은 채널마다 최고 뉴런이 sc_rate=0 으로 면제되어 어떤 채널도
@@ -247,6 +269,30 @@ def METHODS(name, knob):
         #    침묵 뉴런은 vmem readiness 만큼 sc_norm in [0,1) 을 받아 정확히 0 은 아니다.
         #  - shape_mean1 은 켜지 않는다 (neurons.py 주석: no_inv 와 같이 켜면 배율이 튄다).
         return {**METHODS('ours_layer_w1', knob), 'reg_spike_maxnorm_no_inv': True}
+    # --- ours_ch(=ours_inter_ch) 어블레이션 (26-10-04) ---------------------------------
+    # lw1_* 와 같은 방식으로 METHODS('ours_ch') 에서 시작해 **한 요소만** 덮어쓴다.
+    # (group='channel', w 는 기본 w^2 경로 -- ours_ch 가 prop 기반이라 wta_rev_w1=False 다.)
+    if name == 'ch_novmem':
+        # lw1_novmem/abl_novmem 과 같음: gain=0 이면 readiness 를 안 더한다. silent_only 는
+        # gain=0 에서 안 읽히지만 두 기존 팔과 맞춰 False 로 둔다.
+        return {**METHODS('ours_ch', knob), 'reg_spike_vmem_gain': 0.0,
+                'reg_spike_vmem_silent_only': False}
+    if name == 'ch_nofinal':
+        # 벌점 대상이 T 합이 아니라 매 스텝 spike 가 되고, sc_rate 의 채널 합도 매 스텝의
+        # 누적 spike_count 로 다시 계산된다 (abl_nofinal 과 같다).
+        return {**METHODS('ours_ch', knob), 'reg_spike_final_step': False}
+    if name == 'ch_noinv':
+        # neurons.py 확인: no_inv 는 1-maxnorm 가지 끝(group 분기 뒤)에서 sc_rate = sc_norm 으로
+        # 바꾼다. 'channel' 분기의 sc_norm = (채널 공간합)/max_c 을 채널 안에 broadcast 한 것이라
+        # 반전만 빠지고 채널 묶음·vmem readiness(scp 에 들어감)·final_step·loss-ratio 는 그대로다.
+        # maxnorm_plain(abl_noinv) 은 group 을 안 읽어 쓰지 않는다 (decisions.md 09-20).
+        # 1등 채널이 w=1 로 가장 세게 눌리고, 침묵 채널은 readiness 합만큼만 받는다.
+        return {**METHODS('ours_ch', knob), 'reg_spike_maxnorm_no_inv': True}
+    if name == 'ch_nolr':
+        # loss-ratio 제거, 고정 lambda. knob 이 **lambda**. lw1_nolr 과 같은 방식으로 RATIO 키를
+        # 전부 지우고 FIXED 로 바꾼다 (키 집합은 abl_nolr 과 같은 모양).
+        base = {k: v for k, v in METHODS('ours_ch', knob).items() if k not in RATIO(knob)}
+        return {**base, **FIXED(knob)}
     # --- 규제 시작 지연 (09-30) --------------------------------------------------------
     # 원 방법과 **모든 설정이 같고** reg_spike_loss_ratio_start_ep 만 30/60 으로 덮는다.
     # proc.py 의 loss-ratio 갱신(spike_count_epoch_end)이 확인한 동작:
@@ -471,8 +517,8 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor l2 l2_lr sm bpsr ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60')
-    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_ch_taylor/ours_layer/ours_layer_w1/*_st30·*_st60/l2_lr/abl(nolr 제외)/lw1(nolr 제외) 은 rho, sm/l2/bpsr/abl_nolr/lw1_nolr 은 lambda, base 는 '-'")
+    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor l2 l2_lr sm bpsr suetake ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60')
+    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_ch_taylor/ours_layer/ours_layer_w1/*_st30·*_st60/l2_lr/abl(nolr 제외)/lw1(nolr 제외)/ch_*(nolr 제외) 은 rho, sm/l2/bpsr/suetake/abl_nolr/lw1_nolr/ch_nolr 은 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
     ap.add_argument('--dir', default='_paper', help='스윕 디렉토리')
@@ -488,7 +534,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor l2 l2_lr sm bpsr ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60')
+        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor l2 l2_lr sm bpsr suetake ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 

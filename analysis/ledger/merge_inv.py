@@ -7,6 +7,9 @@ KEY2ARM = {'base':'baseline','prop':'ours_intra_ch','ours_w1':'ours_w1','ours_la
   'abl_novmem':'- vmem','abl_nofinal':'- final_step','abl_noinv':'- 1- inversion',
   'abl_noinv_wc':'- 1- inversion (wc)','abl_nolr':'- loss-ratio',
   'lw1_novmem':'lw1 - vmem','lw1_nofinal':'lw1 - final_step','lw1_nolr':'lw1 - loss-ratio','lw1_noinv':'lw1 - 1- inversion',
+  # 26-10-04 Suetake 대조군, ours_inter_ch(run 키 ours_ch) 어블레이션
+  'suetake':'Suetake','ch_novmem':'- vmem (inter)','ch_nofinal':'- final_step (inter)',
+  'ch_noinv':'- 1- inversion (inter)','ch_nolr':'- loss-ratio (inter)',
   # 09-30 규제 시작 지연 (loss-ratio start_ep=30/60)
   'ours_w1_st30':'ours_w1 st30','ours_w1_st60':'ours_w1 st60',
   'ours_ch_st30':'ours_inter_ch st30','ours_ch_st60':'ours_inter_ch st60',
