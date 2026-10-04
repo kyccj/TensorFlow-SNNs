@@ -1002,9 +1002,20 @@ class Neuron(tf.keras.layers.Layer):
                                     scp = tf.where(scp > 0, scp, g * readiness)
                                 else:
                                     scp = scp + g * readiness
-                            if mg == 'within_channel' and len(scp.shape) == 4:
+                            # 26-10-05 'channel_x_within': inter(채널 공간합/채널 max) 와 intra(같은
+                            # 채널 안 위치/위치 max) 두 가중의 **곱**. 둘 다 위의 같은 scp(vmem
+                            # readiness 포함)를 쓰고, 4D 가 아니면 아래 else(층 전체 max)로 간다.
+                            # 여기서는 intra 를 sc_norm 에, inter 를 sc_norm_x 에 두고 sc_rate 에서 곱한다.
+                            xw = mg == 'channel_x_within' and len(scp.shape) == 4
+                            if (mg == 'within_channel' or xw) and len(scp.shape) == 4:
                                 sc_max = tf.reduce_max(scp, axis=[1, 2], keepdims=True)
                                 sc_norm = tf.math.divide_no_nan(scp, sc_max)
+                                if xw:
+                                    ch_x = tf.reduce_sum(scp, axis=[1, 2], keepdims=True)   # [b,1,1,C]
+                                    sc_norm_x = tf.broadcast_to(
+                                        tf.math.divide_no_nan(
+                                            ch_x, tf.reduce_max(ch_x, axis=3, keepdims=True)),
+                                        tf.shape(scp))
                             elif mg == 'channel' and len(scp.shape) == 4:
                                 ch = tf.reduce_sum(scp, axis=[1, 2], keepdims=True)   # [b,1,1,C]
                                 if hasattr(self, 'ch_imp'):
@@ -1047,9 +1058,15 @@ class Neuron(tf.keras.layers.Layer):
                                 # 침묵 = 정확히 0)과의 핵심 차이다.
                                 # beta 는 여기서 안 쓴다. 1- 가 없으면 beta*sc_norm 은 단순 배율이라
                                 # lambda 와 구분되지 않고, loss-ratio 가 lambda 를 다시 푸므로 무효다.
+                                assert not xw, "reg_spike_maxnorm_no_inv 와 'channel_x_within' 조합은 정의하지 않았다"
                                 sc_rate = sc_norm
                             else:
                                 sc_rate = 1.0 - beta * sc_norm
+                                if xw:
+                                    # (1 - beta*inter) * (1 - beta*intra). 1등 채널 전체와 각 채널
+                                    # 1등 위치가 둘 다 0 을 받는다 -- w 가 전반적으로 작아져 R 이
+                                    # 줄고, loss-ratio 가 그만큼 lambda 를 키운다.
+                                    sc_rate = sc_rate * (1.0 - beta * sc_norm_x)
                             if conf.reg_spike_shape_mean1:
                                 # no_inv 와 같이 켜면 mean(sc_norm) (≈1e-1 이하)으로 나누므로
                                 # 실효 배율이 수배로 뛰고, 그 평균은 group 과 무관하게

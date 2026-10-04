@@ -13,7 +13,11 @@ KEY2ARM = {'base':'baseline','prop':'ours_intra_ch','ours_w1':'ours_w1','ours_la
   # 09-30 규제 시작 지연 (loss-ratio start_ep=30/60)
   'ours_w1_st30':'ours_w1 st30','ours_w1_st60':'ours_w1 st60',
   'ours_ch_st30':'ours_inter_ch st30','ours_ch_st60':'ours_inter_ch st60',
-  'ours_layer_w1_st30':'ours_layer_w1 st30','ours_layer_w1_st60':'ours_layer_w1 st60'}
+  'ours_layer_w1_st30':'ours_layer_w1 st30','ours_layer_w1_st60':'ours_layer_w1 st60',
+  # 26-10-05 끝 구간 규제 해제 (loss-ratio end_ep=40/30)
+  'ours_ch_end40':'ours_inter_ch end40','ours_ch_end30':'ours_inter_ch end30',
+  # 26-10-05 inter x intra 곱 가중 (maxnorm_group='channel_x_within')
+  'ours_chxwc':'ours_inter_ch × intra'}
 NAME = re.compile(r'^(r19c10|r19c100|vggdvs)-(.+)-(-|[0-9p]+e-?[0-9]+)-s(\d+)$')
 DS = {'r19c10': 'C10', 'r19c100': 'C100', 'vggdvs': 'DVS'}   # vggdvs = VGGSNN · CIFAR10-DVS (09-29)
 def f(x):

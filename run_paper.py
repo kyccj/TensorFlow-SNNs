@@ -19,6 +19,8 @@
     ours_ch_b4  ours_ch + shape_beta=0.4. knob 은 rho
     ours_ch_taylor ours_ch 와 전부 같고 채널 서열만 Taylor 중요도 |sum (dL/ds)*s| 의 EMA 로 매긴다
                 (규제 항은 여전히 스파이크. 26-10-02). knob 은 rho
+    ours_chxwc  ours_ch 와 전부 같고 가중만 inter x intra 곱: (1-ch/ch_max)*(1-scp/max_hw scp)
+                (maxnorm_group='channel_x_within'. 26-10-05). knob 은 rho
     sm          1-softmax + 고정 lambda        (내부 최강 기준선)
     l2          plain L2 + 고정 lambda         (문헌 기준선. reg_spike_out_sc=False 로 두면
                                                 neurons.py:1238 의 `else: # old - previous work`
@@ -58,6 +60,10 @@
     ours_layer_w1_st60  ours_layer_w1 + start_ep=60
                 (lambda 는 0-기준 에폭 start_ep 끝까지 0 이고 그 다음 에폭부터 rho*L_task/R 로
                  한 번에 들어간다 -- 램프 없음. 기존 팔(start_ep=0)도 첫 에폭은 lambda=0 이다)
+
+    [끝 구간 규제 해제 -- 원 방법과 전부 같고 마지막 K 에폭만 lambda=0. knob 은 rho (26-10-05)]
+    ours_ch_end40       ours_ch + reg_spike_loss_ratio_end_ep=40 (310에폭이면 271~310 이 lambda=0)
+    ours_ch_end30       ours_ch + end_ep=30
 
 **선별** — 조건당 5런을 돌리고 4개를 쓴다. 배제 규칙은 제안법과 비교군에 똑같이 적용한다:
     (1) 310에폭 미완주  (2) S30/S1 < 0.19  (3) 그래도 5개 남으면 val_acc 상위 4개.
@@ -149,6 +155,13 @@ def METHODS(name, knob):
         # ||s*w||_2 는 그대로 스파이크고, w = 1 - imp/max imp 로 1등 채널이 면제되는 것도 같다.
         # '많이 쏘는 채널' 대신 '손실에 기여하는 채널'을 보호하는지 묻는 팔이다.
         return {**METHODS('ours_ch', knob), 'reg_spike_ch_importance': "'taylor'"}
+    if name == 'ours_chxwc':
+        # 26-10-05 ours_ch 와 전부 같고 가중만 inter(채널 공간합/채널 max) 와 intra(채널 안 위치/
+        # 위치 max) 의 곱이다 (neurons.py 'channel_x_within'). 두 성분 모두 같은 scp(vmem readiness
+        # 포함)를 쓴다. 1등 채널 전체와 각 채널의 1등 위치가 w=0. w 가 전반적으로 작아져 R 이
+        # 줄고 loss-ratio 가 lambda 를 키우므로 같은 rho 라도 ours_ch 와 착지가 다르다.
+        # shape_mean1 은 켜지 않는다 (ours_ch_b* 와 같은 이유).
+        return {**METHODS('ours_ch', knob), 'reg_spike_maxnorm_group': "'channel_x_within'"}
     if name == 'sm':
         return {**BASE, **WTA, 'reg_spike_out_sc_sm': True, 'reg_spike_out_sc_maxnorm': False,
                 'reg_spike_final_step': False, **FIXED(knob)}
@@ -308,6 +321,14 @@ def METHODS(name, knob):
                 'ours_layer_w1_st30', 'ours_layer_w1_st60'):
         src, st = name.rsplit('_st', 1)
         return {**METHODS(src, knob), 'reg_spike_loss_ratio_start_ep': int(st)}
+    # --- 끝 구간 규제 해제 (26-10-05) ---------------------------------------------------
+    # start_ep 의 거울: 원 방법과 **모든 설정이 같고** 마지막 K 에폭만 lambda=0 (proc.py).
+    # 에폭 끝에 다음 에폭 lambda 를 정하므로 proc.py 는 0-기준 epoch >= E-K-1 에서 0 을 넣고,
+    # 그 결과 로그의 'Epoch E-K+1/E' ~ 'Epoch E/E' 정확히 K 에폭이 무규제다.
+    # 마지막 에폭 끝에 찍히는 adp_lambda 는 쓰이지 않는 값이다 (start_ep 의 첫 에폭과 대칭).
+    if name in ('ours_ch_end40', 'ours_ch_end30'):
+        src, k = name.rsplit('_end', 1)
+        return {**METHODS(src, knob), 'reg_spike_loss_ratio_end_ep': int(k)}
     raise SystemExit(f'모르는 방법: {name}')
 
 
@@ -422,6 +443,9 @@ def verify(path, combo, method, knob, seed, gpu, tag, epochs=0, fix_seed=False):
     # 배타 조합
     if want.get('reg_spike_final_step') and want.get('reg_spike_accum_loss'):
         raise RuntimeError(f'{tag}: final_step 과 accum 을 같이 켤 수 없음')
+    if want.get('reg_spike_loss_ratio_end_ep', 0) and not want.get('reg_spike_loss_ratio'):
+        # proc.preproc 의 assert 와 같은 조건을 투입 전에 본다 (26-10-05)
+        raise RuntimeError(f'{tag}: end_ep 는 loss-ratio 경로에서만 동작함')
 
 
 def preflight(jobs, sweep_dir, epochs=0, fix_seed=False):
@@ -517,8 +541,8 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor l2 l2_lr sm bpsr suetake ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60')
-    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_ch_taylor/ours_layer/ours_layer_w1/*_st30·*_st60/l2_lr/abl(nolr 제외)/lw1(nolr 제외)/ch_*(nolr 제외) 은 rho, sm/l2/bpsr/suetake/abl_nolr/lw1_nolr/ch_nolr 은 lambda, base 는 '-'")
+    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
+    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_ch_taylor/ours_chxwc/ours_layer/ours_layer_w1/*_st30·*_st60/*_end40·*_end30/l2_lr/abl(nolr 제외)/lw1(nolr 제외)/ch_*(nolr 제외) 은 rho, sm/l2/bpsr/suetake/abl_nolr/lw1_nolr/ch_nolr 은 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
     ap.add_argument('--dir', default='_paper', help='스윕 디렉토리')
@@ -534,7 +558,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor l2 l2_lr sm bpsr suetake ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60')
+        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 

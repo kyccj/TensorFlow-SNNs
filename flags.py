@@ -868,6 +868,12 @@ flags.DEFINE_float('reg_spike_sc_target',40000,'spike-count feedback: target tot
 flags.DEFINE_bool('reg_spike_loss_ratio',False,'loss-ratio feedback: adjust lambda to maintain reg_loss/task_loss ratio')
 flags.DEFINE_float('reg_spike_loss_ratio_target',2.6e-4,'loss-ratio control: target reg_loss/task_loss. measured value at matched sparsity across 4 settings spans 1.5e-4..3.5e-4')
 flags.DEFINE_integer('reg_spike_loss_ratio_start_ep',0,'loss-ratio control: epoch to start (lambda=0 before)')
+# 26-10-05 끝 구간 규제 해제. start_ep 의 거울: 마지막 K 에폭 동안 lambda=0.
+# Spik4lite 의 마지막 에너지항 제거와 같은 발상 -- 살아남은 채널이 task loss 만으로 회복할 시간을 준다.
+# lambda 는 에폭 끝(0-기준 epoch)에 다음 에폭용으로 정해지므로 proc.py 는 epoch >= train_epoch-K-1 에서
+# 0 을 넣는다 -> 0-기준 train_epoch-K .. train_epoch-1 (로그 'Epoch E-K+1/E' ~ 'Epoch E/E') 정확히 K 에폭.
+# loss-ratio 경로에서만 읽는다. 고정 lambda 경로에서 켜면 proc.preproc 의 assert 가 막는다.
+flags.DEFINE_integer('reg_spike_loss_ratio_end_ep',0,'loss-ratio control (26-10-05): turn reg off (lambda=0) for the last K epochs, K=this value. 0 = never. Mirror of reg_spike_loss_ratio_start_ep; same idea as Spik4lite dropping the energy term at the end -- surviving channels recover on the task loss alone. Exactly K epochs: lambda set at the end of 0-based epoch e is used in e+1, so it is zeroed for e >= train_epoch-K-1.')
 flags.DEFINE_bool('reg_spike_R_per_step',False,'loss-ratio control: report R as one time step instead of the sum over T. This under-reports what the loss actually receives by ~T and is wrong on its face, but it is the accounting every result before 2026-08-07 was measured under, so it exists to keep new points on that curve. Leave False for anything new.')
 # early-phase speed-limit brake. From the 26-08-12 retrospective over 189 completed runs:
 # cutting train-mode spikes below 0.19x of their epoch-1 level within the first 30 epochs
@@ -880,7 +886,7 @@ flags.DEFINE_bool('reg_spike_R_per_step',False,'loss-ratio control: report R as 
 # positive feedback at all epochs.
 flags.DEFINE_bool('reg_spike_out_sm_plain',False,'plain softmax weighting: sc_rate = softmax(spike_count/alpha) with NO 1- inversion, so high-firing neurons get more penalty. Overrides the wta_rev/sc_wta weighting while keeping the wta_rev backward, isolating the weighting as the only difference. mean(sc_rate)=1/N, so equal lambda means ~N-times weaker effective pressure than 1-softmax.')
 flags.DEFINE_bool('reg_spike_out_sc_one',False,'constant coefficient: sc_rate = 1 exactly, keeping the wta_rev backward. 1-softmax measures 0.9999 with ~0 spread, so this should reproduce its results identically; if it does, softmax is vestigial and the method is "uniform-weight L2 with gradient to silent neurons".')
-flags.DEFINE_enum('reg_spike_maxnorm_group','none',['none','within_channel','channel'],"which group 1-maxnorm takes its max over, for [b,H,W,C] activations. 'none' = whole layer (max is the layer-wide max, so a weak channel's own best neuron still gets a large penalty). 'within_channel' = max per channel over H*W, so EVERY channel's top neuron gets sc_rate=0 and no channel can be wiped out. 'channel' = pool space then max over C.")
+flags.DEFINE_enum('reg_spike_maxnorm_group','none',['none','within_channel','channel','channel_x_within'],"which group 1-maxnorm takes its max over, for [b,H,W,C] activations. 'none' = whole layer (max is the layer-wide max, so a weak channel's own best neuron still gets a large penalty). 'within_channel' = max per channel over H*W, so EVERY channel's top neuron gets sc_rate=0 and no channel can be wiped out. 'channel' = pool space then max over C. 'channel_x_within' (26-10-05) = product of the two: sc_rate = (1-beta*ch/ch_max)*(1-beta*scp/max_hw scp), both from the same scp (vmem readiness incl.); non-4D layers fall back to the layer-wide max like the others. Not defined with reg_spike_maxnorm_no_inv (asserts).")
 # 26-10-02 'channel' 묶음의 채널 서열을 무엇으로 매기나. 기본 'spike' 는 지금까지의 동작(채널 공간합)
 # 그대로이고 새 연산이 그래프에 안 들어간다. 'taylor' 는 서열만 Taylor 중요도로 바꾼다 -- 규제 항
 # ||s*w||_2 는 여전히 스파이크로 계산되고 loss-ratio·final_step 도 그대로다.

@@ -59,6 +59,10 @@ def arm_from_conf(c):
     st = c.get('reg_spike_loss_ratio_start_ep', 0)
     if c.get('reg_spike_loss_ratio', False) and isinstance(st, (int, float)) and st > 0:
         arm += f' st{int(st)}'
+    # 26-10-05 끝 구간 규제 해제(*_end40/*_end30)도 같은 이유로 ' end40' 을 붙인다.
+    en = c.get('reg_spike_loss_ratio_end_ep', 0)
+    if c.get('reg_spike_loss_ratio', False) and isinstance(en, (int, float)) and en > 0:
+        arm += f' end{int(en)}'
     return arm
 
 
@@ -95,6 +99,8 @@ def _arm_core(c):
     if grp == 'channel':
         b = c.get('reg_spike_shape_beta', 1.0)
         return 'ours_inter_ch' if b == 1.0 else f'ours_ch_b{int(round(b * 10))}'
+    if grp == 'channel_x_within':     # 26-10-05 inter x intra 곱 가중
+        return 'ours_inter_ch × intra'
     return f'unknown(grp={grp})'
 
 
@@ -109,6 +115,9 @@ DIR_ARM = {
     'ours_w1_st30': 'ours_w1 st30', 'ours_w1_st60': 'ours_w1 st60',
     'ours_ch_st30': 'ours_inter_ch st30', 'ours_ch_st60': 'ours_inter_ch st60',
     'ours_layer_w1_st30': 'ours_layer_w1 st30', 'ours_layer_w1_st60': 'ours_layer_w1 st60',
+    # 26-10-05 끝 구간 규제 해제 (loss-ratio end_ep)
+    'ours_ch_end40': 'ours_inter_ch end40', 'ours_ch_end30': 'ours_inter_ch end30',
+    'ours_chxwc': 'ours_inter_ch × intra',
 }
 NAME = re.compile(r'^r19c(10|100)-(.+?)-([^-]*)-s(\d+)$')
 

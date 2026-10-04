@@ -46,6 +46,11 @@ from lib_snn import config_glb
 # setting (on_test_begin)
 ########################################
 def preproc(self):
+    # 26-10-05 reg_spike_loss_ratio_end_ep 는 loss-ratio 경로에서만 읽는다. 고정 lambda
+    # (reg_spike_out_const) 경로에서 켜면 아무 일도 안 일어나 조용히 원 팔과 같아지므로 막는다.
+    assert conf.reg_spike_loss_ratio_end_ep <= 0 or conf.reg_spike_loss_ratio, \
+        'reg_spike_loss_ratio_end_ep 는 reg_spike_loss_ratio=True 에서만 동작한다'
+
     # print summary model
     #print('summary model')
     if self.total_num_neurons==0:
@@ -1275,6 +1280,14 @@ def spike_count_epoch_end(self,epoch,logs,num_ds):
                     # growth cap at all epochs: bounds the R->0 -> lambda->inf feedback
                     new_lambda = min(new_lambda, cur_lambda * conf.reg_spike_lr_growth_cap)
             logs['brake_on'] = brake_on
+
+        # 26-10-05 끝 구간 규제 해제 (flags.py reg_spike_loss_ratio_end_ep). start_ep 의 거울.
+        # 여기서 정한 lambda 는 다음 에폭(epoch+1)에 쓰이므로 epoch+1 >= train_epoch-K 일 때 0 을
+        # 넣어야 마지막 K 에폭이 정확히 lambda=0 이다. 브레이크·성장 상한 뒤에 두어 그쪽이
+        # 0 을 되살리지 못하게 한다. 기본 0 이면 조건이 거짓이라 기존 경로와 같다.
+        if conf.reg_spike_loss_ratio_end_ep > 0 and \
+                epoch >= conf.train_epoch - conf.reg_spike_loss_ratio_end_ep - 1:
+            new_lambda = 0.0
 
         lib_snn.model.adaptive_lambda.assign(new_lambda)
         logs['adp_lambda'] = new_lambda
