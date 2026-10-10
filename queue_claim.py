@@ -30,6 +30,19 @@ def _edit(path, fn):
 
 
 def do_claim(path, tag):
+    # User directive 2026-10-07: sejong finishes existing runs, no new small jobs.
+    import json
+    policy = os.path.join(os.path.dirname(os.path.abspath(path)), 'dispatch_policy.json')
+    try:
+        with open(policy) as source:
+            blocked = json.load(source).get('blocked_hosts', [])
+    except FileNotFoundError:
+        blocked = []
+    except (OSError, ValueError, TypeError):
+        return None  # Invalid admission policy must not launch another job.
+    host = tag.split(':', 1)[0].split('@')[-1]
+    if host in blocked:
+        return None
     def fn(lines):
         cand = []
         for i, l in enumerate(lines):

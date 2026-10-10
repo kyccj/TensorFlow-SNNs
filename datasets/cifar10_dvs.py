@@ -135,6 +135,106 @@ def load():
         # 배치 뒤에 nda 를 건다 (Surro 와 같은 순서). drop_remainder 는 아래 else 와 같은 이유.
         train_ds = train_ds.batch(batch_size, drop_remainder=True)
         train_ds = train_ds.map(lambda images, labels: nda(images, labels))
+    # nda_cutmix (26-10-09): 2025-11 코드(duddnr/datasets/cifar10_dvs.py 의 nda_cutmix,
+    # 당시 VGGSNN-DVS 81~82%)를 옮겼다. 위 'nda'(2026-03 Surro, 74%)와 다른 점:
+    #   (1) roll/rotate/shear 중 하나를 배치 전체(모든 표본, 모든 T 프레임)에 같은 값으로 건다.
+    #       프레임마다 따로 걸지 않고, cutout 은 없다.
+    #   (2) CutMix 를 항상 건다. 배치 안에서 섞은 짝의 사각형 영역을 붙이고, 라벨은 실제
+    #       붙은 면적 비율로 섞는다 (one-hot float -> soft label).
+    #   (3) 학습 프레임 resize 가 'nearest' (as_frames_for_nda 의 resize_method).
+    # 'nda' 경로는 이 분기와 무관하다 -- 기존 런과의 비교를 위해 한 줄도 바꾸지 않았다.
+    elif conf.data_aug_mix == 'nda_cutmix':
+        import math
+        import tensorflow_addons as tfa
+
+        @tf.function
+        def nda_cutmix(images, labels):
+            choice = tf.random.uniform([], 0, 3, dtype=tf.int32)
+
+            def flatten_bt(x):
+                shape = tf.shape(x)
+                return tf.reshape(x, [-1, shape[2], shape[3], shape[4]]), shape
+
+            def unflatten_bt(x_flat, orig_shape):
+                return tf.reshape(x_flat, orig_shape)
+
+            def roll_all():
+                dx = tf.random.uniform([], -3, 4, dtype=tf.int32)
+                dy = tf.random.uniform([], -3, 4, dtype=tf.int32)
+                return tf.roll(images, shift=[dx, dy], axis=[2, 3])
+
+            def rotate_all():
+                angle = tf.random.uniform([], -15., 15.) * math.pi / 180.0
+                flat, shp = flatten_bt(images)
+                flat = tfa.image.rotate(flat, angles=angle, interpolation='BILINEAR')
+                return unflatten_bt(flat, shp)
+
+            def shear_all():
+                level = tf.random.uniform([], -15., 15.)
+                rad = level * math.pi / 180.0
+                transform = [1.0, tf.math.tan(rad), 0.0,
+                             0.0, 1.0, 0.0,
+                             0.0, 0.0]
+                flat, shp = flatten_bt(images)
+                flat = tfa.image.transform(flat, transform, interpolation='BILINEAR')
+                return unflatten_bt(flat, shp)
+
+            images = tf.case([(tf.equal(choice, 0), roll_all),
+                              (tf.equal(choice, 1), rotate_all)],
+                             default=shear_all, exclusive=True)
+
+            B, T, H, W, C = tf.unstack(tf.shape(images))
+
+            # 원본은 tfp.distributions.Beta(1, 1).sample([B]). Beta(1,1) 은 U(0,1) 과 같은 분포라
+            # tf.random.uniform 으로 바꿨다. tfp 0.17.0 이 두 서버(venv_1, venv_eip)에 깔려는
+            # 있지만 공식 짝은 TF 2.9 다 (우리는 2.12.1) -- 같은 분포를 위해 의존성을 늘리지 않는다.
+            # 원본도 alpha=1.0 으로만 불렀다 (duddnr 171행).
+            lam = tf.random.uniform([B], 0., 1.)
+
+            idx = tf.random.shuffle(tf.range(B))
+            img_shuf = tf.gather(images, idx)
+            label_shuf = tf.gather(labels, idx)
+
+            r_x = tf.random.uniform([B], 0, W, tf.int32)
+            r_y = tf.random.uniform([B], 0, H, tf.int32)
+            r_w = tf.cast(tf.sqrt(1. - lam) * tf.cast(W, tf.float32), tf.int32)
+            r_h = tf.cast(tf.sqrt(1. - lam) * tf.cast(H, tf.float32), tf.int32)
+
+            x1 = tf.clip_by_value(r_x - r_w // 2, 0, W)
+            y1 = tf.clip_by_value(r_y - r_h // 2, 0, H)
+            x2 = tf.clip_by_value(r_x + r_w // 2, 0, W)
+            y2 = tf.clip_by_value(r_y + r_h // 2, 0, H)
+
+            # 원본 그대로: 붙일 영역에서 짝 표본 값이 0 인 픽셀은 원래 표본 값을 남긴다
+            # (patch != 0 조건). 라벨 비율은 이와 무관하게 사각형 면적으로 정한다.
+            def _apply_cutmix(i, img, img_s):
+                yy1, yy2, xx1, xx2 = y1[i], y2[i], x1[i], x2[i]
+                paddings = [[0, 0],
+                            [yy1, H - yy2],
+                            [xx1, W - xx2],
+                            [0, 0]]
+                patch = tf.pad(img_s[:, yy1:yy2, xx1:xx2, :],
+                               paddings, 'CONSTANT')
+                return tf.where(patch != 0, patch, img)
+
+            mix_imgs = tf.map_fn(
+                lambda tup: _apply_cutmix(*tup),
+                (tf.range(B), images, img_shuf),
+                fn_output_signature=images.dtype)
+
+            lam_area = 1. - (tf.cast((x2 - x1) * (y2 - y1), tf.float32) /
+                             tf.cast(H * W, tf.float32))
+            lam_area = tf.reshape(lam_area, [-1, 1])
+
+            mix_labels = lam_area * labels + (1. - lam_area) * label_shuf
+            return mix_imgs, mix_labels
+
+        train_ds = train_ds.map(
+            lambda events, labels: as_frames_for_nda(events, labels, dataset_name='CIFAR10_DVS', shape=image_shape,
+                                                     num_frames=num_frames, resize_method='nearest'))
+        # 배치 단위 함수라 batch 뒤에 건다 (원본과 같은 순서). drop_remainder 는 아래와 같은 이유.
+        train_ds = train_ds.batch(batch_size, drop_remainder=True)
+        train_ds = train_ds.map(lambda images, labels: nda_cutmix(images, labels))
     else:
         train_ds = train_ds.map(lambda events,labels: as_frames(events,labels,shape=image_shape,num_frames=num_frames,augmentation=True))
     # todo - cutmix
@@ -155,7 +255,7 @@ def load():
     # drop_remainder: 모델 Input 이 batch_size 고정이라 마지막 부분 배치(9000 % 32 = 8)가 들어오면
     # 모양이 안 맞는다. Surro 의 VGGSNN 레시피(batch 32)가 같은 이유로 켠다 (26-09-29).
     # batch 100 이면 9000/1000 이 나누어떨어져 아무것도 안 버린다 (기존 동작 그대로).
-    if conf.data_aug_mix != 'nda':   # nda 는 위에서 이미 batch 했다
+    if conf.data_aug_mix not in ('nda', 'nda_cutmix'):   # nda / nda_cutmix 는 위에서 이미 batch 했다
         train_ds = train_ds.batch(batch_size, drop_remainder=True)
     train_ds = train_ds.prefetch(num_parallel)
 

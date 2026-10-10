@@ -2288,6 +2288,20 @@ class Neuron(tf.keras.layers.Layer):
                 #du_do = tf.where(cond,tf.ones(cond.shape),tf.zeros(cond.shape))
                 du_do = tf.where(cond,h,tf.zeros(cond.shape,dtype=vmem.dtype))
                 #du_do = tf.where(cond,vmem-vth+a,tf.zeros(cond.shape))
+            # 26-10-10 Surro(2025-11) 의 'asy_height_fix' 이식 (VGGSNN-DVS 81~82% 런의 서로게이트).
+            # 원본: Surro lib_snn/neurons.py 2551행. 창 |vmem-vth|<=w 안에서
+            #   h = (vmem-1)/(2w) + b     (창 밖 0. vth 에서 높이 b, 기울기 1/(2w))
+            # 원본은 (vmem-1) 로 vth=1 을 상수로 박았다. 여기서는 vth 로 쓴다 -- n_init_vth=1.0 이고
+            # vth 를 바꾸는 옵션(vth_rand_static·adaptive_vth 등)이 꺼져 있으면 같은 식이다.
+            # w = surro_asyhf_width (원본 surro_grad_beth), b = surro_asyhf_height (원본 asy_height_val).
+            # 기존 'boxcar'/'asym' 분기와 기본값 경로는 그대로다.
+            elif conf.fire_surro_grad_func=='asy_height_fix':
+                width_h = conf.surro_asyhf_width
+                cond_lower=tf.math.greater_equal(vmem,vth-width_h)
+                cond_upper=tf.math.less_equal(vmem,vth+width_h)
+                cond = tf.math.logical_and(cond_lower,cond_upper)
+                h = (1/(2*width_h))*(vmem-vth)+conf.surro_asyhf_height
+                du_do = tf.where(cond,h,tf.zeros(cond.shape,dtype=vmem.dtype))
 
             grad_ret = upstream*du_do
 

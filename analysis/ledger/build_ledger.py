@@ -85,7 +85,16 @@ if _c100.exists() and not any(r['tag'] == 'qk100-baseline---s42' for r in runs):
                  'server': '138', 'epochs': 410, 'status': 'done', 'val_acc': float(_b[-1]) if _b else None,
                  'finished': dt.datetime.fromtimestamp(_c100.stat().st_mtime).strftime('%Y-%m-%d %H:%M'),
                  'spikes': json.load(open(_sj))['totals']['spikes_per_sample'] if _sj.exists() else None})
-data = json.dumps({'generated': inv['generated'], 'runs': runs, 'qk': qk}, ensure_ascii=False,
+# SDTv3 (sejong 에서 읽은 sdt_status.py 결과) -> SDT 탭. 없거나 비면 탭만 비어 있다
+_sd = os.path.join(os.path.dirname(os.path.abspath(src)), 'sdt.json')
+sdt = json.load(open(_sd)) if os.path.exists(_sd) else None
+for j in (sdt or {}).get('jobs', []):
+    runs.append({'tag': f"{j['ds'].lower()}-{j['arm']}-{j['knob']}-s{j['seed']}", 'ds': j['ds'], 'arm': j['arm'],
+                 'knob': j['knob'], 'seed': j['seed'], 'server': j['server'], 'epochs': j['epochs'], 'total': j['total'],
+                 'status': j['status'], 'train_loss': j['train_loss'], 'train_acc': j['train_acc'],
+                 'val_loss': j['val_loss'], 'val_acc': j['val_acc'], 'val_last': j['val_last'],
+                 'spikes': j['spikes'], 'gpu': j['gpu'], 'dir': j.get('dir'), 'eta': j['eta'], 'finished': j['finished']})
+data = json.dumps({'generated': inv['generated'], 'runs': runs, 'qk': qk, 'sdt': sdt}, ensure_ascii=False,
                   separators=(',', ':'))
 
 HTML = r"""<title>EIP 실험 원장</title>
@@ -230,6 +239,8 @@ table.m td.mean small{color:var(--muted)}
       <button id="ds-QK" type="button" aria-pressed="false">QKFormer C10</button>
       <button id="ds-QK100" type="button" aria-pressed="false">QKFormer C100</button>
       <button id="ds-DVS" type="button" aria-pressed="false">VGGSNN DVS</button>
+      <button id="ds-SDT" type="button" aria-pressed="false">SDTv3 ImageNet-100</button>
+      <button id="ds-SDT1K" type="button" aria-pressed="false">SDTv3 ImageNet-1k</button>
     </div>
     <label class="tg"><input type="checkbox" id="only-miss"> 노트에 없는 완주 런만 강조</label>
     <button type="button" class="btn off" id="md-btn">이 탭 결과 MD로 내보내기</button>
@@ -283,8 +294,8 @@ const STATUS_KO = {done:'완주', excluded:'완주·배제', running:'진행 중
 
 let ds = 'C10', onlyMiss = false, sel = null;
 let notes = new Set(), dbRef = null, noteMode = 'loading';   // loading | live | off
-try { const v = localStorage.getItem('ledger.ds'); if (['C10', 'C100', 'QK', 'QK100', 'DVS'].includes(v)) ds = v; } catch (e) {}
-const TOT = r => r.ds.startsWith('QK') ? 410 : r.ds === 'DVS' ? 200 : 310;
+try { const v = localStorage.getItem('ledger.ds'); if (['C10', 'C100', 'QK', 'QK100', 'DVS', 'SDT', 'SDT1K'].includes(v)) ds = v; } catch (e) {}
+const TOT = r => r.total ? r.total : r.ds.startsWith('QK') ? 410 : r.ds === 'DVS' ? 200 : 310;
 let runSort = 'eta';
 try { const v = localStorage.getItem('ledger.runSort'); if (['eta','server','gpu'].includes(v)) runSort = v; } catch (e) {}
 function setRunSort(v){ runSort = v; try { localStorage.setItem('ledger.runSort', v); } catch (e) {} renderQueue(); }
@@ -302,6 +313,8 @@ function render(){
   const rs = DATA.runs.filter(r => r.ds === ds);
   $('sub').textContent = ds.startsWith('QK')
     ? `QKFormer · CIFAR-${ds === 'QK' ? '10' : '100'} · 410에폭 · val acc 는 학습 로그 최고값(AMP), 스파이크는 테스트 전체 fp32 측정 · 목록 갱신 ${DATA.generated}`
+    : ds === 'SDT' ? `SDTv3 (spikformer12_768) · ImageNet 100클래스 서브셋 · 30에폭 · 서버 23 · val 5000장 · val acc 는 최고값(작게: 마지막 에폭) · 스파이크는 이미지당, 마지막 에폭 · 목록 갱신 ${DATA.generated}`
+    : ds === 'SDT1K' ? `SDTv3 (spikformer12_768) · ImageNet-1k 전체 · 서버 23 (8 GPU 한 런) · 보정(calib) 3에폭 / 본 런(ft) 30에폭 · 출발점: 공식 171M 1×8 ckpt, head-only 85.72% / 2,045,688 스파이크/이미지 · val acc 는 최고값(작게: 마지막 에폭) · 스파이크는 이미지당, 마지막 에폭 · 목록 갱신 ${DATA.generated}`
     : ds === 'DVS' ? `VGGSNN · CIFAR10-DVS · 200에폭 · 검증 992장 (정확도 1σ ≈ ±1.4%p) · 목록 갱신 ${DATA.generated}`
     : `ResNet19 · ${ds === 'C10' ? 'CIFAR-10' : 'CIFAR-100'} · 310에폭 · 서버 138/23 · 목록 갱신 ${DATA.generated}`;
   const cnt = {done:0,excluded:0,running:0,todo:0,hold:0,stale:0};
@@ -333,7 +346,7 @@ function render(){
 }
 
 const knobLabel = r => r.arm === 'baseline' ? '' : `${LAMBDA.has(r.arm) ? 'λ' : 'ρ'} ${r.knob}`;
-const runName = r => `<span class="run">${r.arm}</span> <small>${knobLabel(r)} · s${r.seed}${r.ds === 'C100' ? ' · C100' : r.ds === 'QK' ? ' · QKFormer' : r.ds === 'QK100' ? ' · QKFormer C100' : r.ds === 'DVS' ? ' · DVS' : ''}</small>`;
+const runName = r => `<span class="run">${r.arm}</span> <small>${knobLabel(r)} · s${r.seed}${r.ds === 'C100' ? ' · C100' : r.ds === 'QK' ? ' · QKFormer' : r.ds === 'QK100' ? ' · QKFormer C100' : r.ds === 'DVS' ? ' · DVS' : r.ds === 'SDT' ? ' · SDTv3' : r.ds === 'SDT1K' ? ' · SDTv3-1k · ' + r.dir : ''}</small>`;
 function renderQueue(){
   const g = r => (r.gpu == null || r.gpu === '' ? 99 : +r.gpu);
   const cmp = {
@@ -386,6 +399,21 @@ function renderQueue(){
     if (qk.last) h += `<p class="last">${qk.last.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</p>`;
     h += `</div>`;
   }
+  const sd = DATA.sdt;
+  if (sd && sd.jobs.length){
+    const ST = {done:'완료', running:'진행 중', todo:'대기', stale:'중단'};
+    const rows = sd.jobs.slice().sort((a,b) => (a.arm === 'baseline' ? -1 : b.arm === 'baseline' ? 1 : num(a.knob) - num(b.knob)));
+    h += `<div class="qcol qk"><h2>SDTv3 <b>${rows.length}</b><small>sejong(23) 읽기 전용 · 마지막 에폭 값 · 에폭 간격은 최근 3회 중앙값</small></h2>`;
+    h += `<div class="scroll"><table class="q"><thead><tr><th>상태</th><th>방법</th><th>서버·GPU</th><th>진행</th><th>train loss</th><th>train acc</th><th>val loss</th><th>val acc (최고 / 마지막)</th><th>스파이크/이미지</th><th>예상 완료</th></tr></thead><tbody>`;
+    for (const j of rows){
+      h += `<tr><td><span class="st ${j.status}">${ST[j.status] || j.status}</span></td><td>${j.ds === 'SDT1K' ? '<small style="color:var(--muted)">1k ' + j.dir + '</small> ' : ''}${j.arm}${j.arm === 'baseline' ? '' : ' <small style="color:var(--muted)">ρ ' + j.knob + '</small>'}</td>
+            <td class="n">${j.server} · ${j.gpu}</td><td class="n">${j.epochs}/${j.total}</td>
+            <td class="n">${f4(j.train_loss)}</td><td class="n">${f2(j.train_acc)}</td><td class="n">${f4(j.val_loss)}</td>
+            <td class="n">${f2(j.val_acc)} <small style="color:var(--muted)">/ ${f2(j.val_last)}</small></td>
+            <td class="n">${int(j.spikes)}</td><td class="n">${j.eta || (j.finished ? j.finished.slice(5) : '–')}</td></tr>`;
+    }
+    h += `</tbody></table></div><p class="last">train loss 는 규제 항 제외(task loss). baseline 은 옛 코드(8641bad) 로그라 스파이크를 train.log 에서 읽어 ×10. 규제 런은 코드 e13d3c2.</p></div>`;
+  }
   $('queue').innerHTML = h;
 }
 
@@ -404,7 +432,7 @@ function armCard(arm, list){
       if (!r){ t += `<td><div class="c empty"></div></td>`; continue; }
       if (r.status === 'done') ok.push(r);
       let main = '', subl = '';
-      if (isDoneish(r)){ main = f2(r.val_acc); subl = (r.spikes ? int(r.spikes) : '') + (r.finished ? `</span><span class="fin">${r.finished.slice(5)}` : ''); }
+      if (isDoneish(r)){ main = f2(r.val_acc); subl = (r.val_last != null ? `마지막 ${f2(r.val_last)} · ` : '') + (r.spikes ? int(r.spikes) : '') + (r.finished ? `</span><span class="fin">${r.finished.slice(5)}` : ''); }
       else if (r.status === 'running'){ main = `${r.epochs}/${TOT(r)}`; subl = r.server; }
       else if (r.status === 'todo'){ main = '대기'; }
       else if (r.status === 'hold'){ main = '보류'; subl = '후순위'; }
@@ -453,7 +481,7 @@ function renderDetail(){
       <div><dt>train loss</dt><dd>${f4(r.train_loss)}</dd></div>
       <div><dt>train acc</dt><dd>${f2(r.train_acc)}</dd></div>
       <div><dt>val loss</dt><dd>${f4(r.val_loss)}</dd></div>
-      <div><dt>val acc</dt><dd>${f2(r.val_acc)}</dd></div>
+      <div><dt>val acc${r.val_last != null ? ' (최고 / 마지막)' : ''}</dt><dd>${f2(r.val_acc)}${r.val_last != null ? ' / ' + f2(r.val_last) : ''}</dd></div>
       <div><dt>spikes</dt><dd>${int(r.spikes)}</dd></div>
       <div><dt>S30/S1</dt><dd>${s30}</dd></div>
       <div><dt>종료 시각</dt><dd>${r.finished || '–'}</dd></div>
@@ -479,7 +507,7 @@ async function toggleNote(tag){
 }
 
 // ── MD 내보내기 (09-29): 지금 탭의 완주 결과를 방법·knob 별 표로. 열 순서는 보고 규약 그대로
-const DSNAME = {C10:'R19-C10', C100:'R19-C100', QK:'QKFormer-C10', QK100:'QKFormer-C100', DVS:'VGGSNN-CIFAR10DVS'};
+const DSNAME = {C10:'R19-C10', C100:'R19-C100', QK:'QKFormer-C10', QK100:'QKFormer-C100', DVS:'VGGSNN-CIFAR10DVS', SDT:'SDTv3-ImageNet100', SDT1K:'SDTv3-ImageNet1k'};
 function buildMd(){
   const rs = DATA.runs.filter(r => r.ds === ds && isDoneish(r));
   const byArm = {}; rs.forEach(r => (byArm[r.arm] = byArm[r.arm] || []).push(r));
@@ -488,17 +516,17 @@ function buildMd(){
   let md = `# ${DSNAME[ds]} 실험 결과 (원장 ${DATA.generated})\n\n`;
   for (const a of order){
     const kn = a === 'baseline' ? '' : (LAMBDA.has(a) ? 'λ' : 'ρ');
-    md += `### ${DSNAME[ds]} · ${a}\n\n| ${kn} | 시드 | 서버 | train loss | train acc | val loss | val acc | spikes | 종료 시각 | 비고 |\n|---|---|---|---|---|---|---|---|---|---|\n`;
+    md += `### ${DSNAME[ds]} · ${a}\n\n| ${kn} | 시드 | 서버 | train loss | train acc | val loss | val acc (최고) | val acc (마지막) | spikes | 종료 시각 | 비고 |\n|---|---|---|---|---|---|---|---|---|---|---|\n`;
     const knobs = [...new Set(byArm[a].map(r => r.knob))].sort((x,y) => num(x)-num(y));
     for (const k of knobs){
       const g = byArm[a].filter(r => r.knob === k).sort((x,y) => x.seed - y.seed);
       const kl = k === '-' ? '–' : k;
-      for (const r of g) md += `| ${kl} | s${r.seed} | ${r.server} | ${f4(r.train_loss)} | ${f2(r.train_acc)} | ${f4(r.val_loss)} | ${f2(r.val_acc)} | ${r.spikes == null ? '–' : Math.round(r.spikes)} | ${n(r.finished)} | ${r.status === 'excluded' ? '제외 (S30/S1<0.19)' : ''} |\n`;
+      for (const r of g) md += `| ${kl} | s${r.seed} | ${r.server} | ${f4(r.train_loss)} | ${f2(r.train_acc)} | ${f4(r.val_loss)} | ${f2(r.val_acc)} | ${f2(r.val_last)} | ${r.spikes == null ? '–' : Math.round(r.spikes)} | ${n(r.finished)} | ${r.status === 'excluded' ? '제외 (S30/S1<0.19)' : ''} |\n`;
       const ok = g.filter(r => r.status === 'done');
       if (ok.length){
         const m = x => { const v = ok.filter(r => r[x] != null); return v.length ? v.reduce((s,r) => s + r[x], 0) / v.length : null; };
         const mu = m('val_acc'); const sd = ok.length > 1 ? ' ±' + Math.sqrt(ok.reduce((s,r) => s + (r.val_acc-mu)**2, 0) / (ok.length-1)).toFixed(2) : '';
-        md += `| **${kl} 평균** | **n=${ok.length}** | | ${f4(m('train_loss'))} | ${f2(m('train_acc'))} | ${f4(m('val_loss'))} | **${f2(mu)}${sd}** | **${m('spikes') == null ? '–' : Math.round(m('spikes'))}** | | |\n`;
+        md += `| **${kl} 평균** | **n=${ok.length}** | | ${f4(m('train_loss'))} | ${f2(m('train_acc'))} | ${f4(m('val_loss'))} | **${f2(mu)}${sd}** | ${m('val_last') == null ? '–' : f2(m('val_last'))} | **${m('spikes') == null ? '–' : Math.round(m('spikes'))}** | | |\n`;
       }
     }
     md += `\n`;
@@ -536,6 +564,8 @@ function setDs(v){
   $('ds-QK').setAttribute('aria-pressed', v === 'QK');
   $('ds-QK100').setAttribute('aria-pressed', v === 'QK100');
   $('ds-DVS').setAttribute('aria-pressed', v === 'DVS');
+  $('ds-SDT').setAttribute('aria-pressed', v === 'SDT');
+  $('ds-SDT1K').setAttribute('aria-pressed', v === 'SDT1K');
   try { localStorage.setItem('ledger.ds', v); } catch (e) {}
   render();
 }
@@ -544,6 +574,8 @@ $('ds-C100').onclick = () => setDs('C100');
 $('ds-QK').onclick = () => setDs('QK');
 $('ds-QK100').onclick = () => setDs('QK100');
 $('ds-DVS').onclick = () => setDs('DVS');
+$('ds-SDT').onclick = () => setDs('SDT');
+$('ds-SDT1K').onclick = () => setDs('SDT1K');
 $('only-miss').onchange = e => { onlyMiss = e.target.checked; render(); };
 setDs(ds);
 

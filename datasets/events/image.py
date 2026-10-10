@@ -218,7 +218,10 @@ def as_frames_for_nda(
     dataset_name='None',
     flip_up_down=False,
     augmentation=False,
+    resize_method='bilinear',
 ):
+    # resize_method (26-10-09): 'nda' 는 기본값 'bilinear' 그대로 (기존 동작 불변).
+    # 'nda_cutmix' 만 2025-11 코드(duddnr/image.py)대로 'nearest' 를 넘긴다.
 
     #
     conf.input_data_time_dim = True
@@ -290,7 +293,7 @@ def as_frames_for_nda(
     if conf.model == 'Spikformer':
         images = images
     else:
-        images = tf.image.resize(images,(s,s),method='bilinear')   # VGG, ResNet
+        images = tf.image.resize(images,(s,s),method=resize_method)   # VGG, ResNet
 
     images = tf.image.random_flip_left_right(images)
     labels = tf.one_hot(labels, num_class)

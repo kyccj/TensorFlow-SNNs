@@ -382,7 +382,9 @@ flags.DEFINE_enum('data_prep', 'default', ['default', 'max_norm', 'max_norm_d', 
 # mixup/cutmix 만 보므로 'nda' 는 거기서 'None' 과 같다. Surro 는 enum 에 없이 conf 대입으로
 # 넣는다 (absl 은 속성 대입 때 enum 을 검사하지 않는다) -- 여기서는 목록에 올려 둔다.
 # 기본값 'cutmix' 는 그대로다.
-flags.DEFINE_enum('data_aug_mix', 'cutmix', ['mixup', 'cutmix', 'None', 'nda'], 'data augmentation - mixup')
+# 'nda_cutmix' (26-10-09): 2025-11 DVS 레시피 (클립 전체에 같은 roll/rotate/shear + CutMix).
+# 'nda' 와 마찬가지로 DVS 로더만 읽는다.
+flags.DEFINE_enum('data_aug_mix', 'cutmix', ['mixup', 'cutmix', 'None', 'nda', 'nda_cutmix'], 'data augmentation - mixup')
 flags.DEFINE_integer('mix_off_iter', -1, 'mix off iter (default: -1 (not apply mix off)')
 #flags.DEFINE_float('mix_alpha', 0.5, 'alpha for mix augmentation')
 #TODO: set default value
@@ -981,6 +983,8 @@ flags.DEFINE_bool('input_data_time_dim',False,'input data has time dimension')
 flags.DEFINE_integer('time_dim_size',1,'time dimension size')
 flags.DEFINE_integer('cifar10_dvs_img_size',48,'cifar10-dvs: img size')
 flags.DEFINE_integer('cifar10_dvs_crop_img_size',54,'cifar10-dvs: img size (before crop, w/ padded)')
+# 26-10-09: CIFAR10-DVS 의 COS 워밍업 에폭 (lib_snn/model_builder.py). 기본 10 은 이전 고정값과 같다.
+flags.DEFINE_integer('dvs_warmup_epochs',10,'cifar10-dvs: COS lr warmup epochs')
 
 
 #
@@ -1069,10 +1073,14 @@ flags.DEFINE_float('weight_decay_AdamW',1e-6,'weight_decay_factor')
 ########################################
 # surrogate gradient parameters
 ########################################
-flags.DEFINE_enum('fire_surro_grad_func', 'boxcar', ['boxcar', 'sigmoid', 'asym'], 'surrogate gardient function of fire function')
+# 26-10-10 'asy_height_fix' 추가: Surro(2025-11) 서로게이트. 창 |vmem-vth|<=w 안에서 h=(vmem-vth)/(2w)+b.
+# w=surro_asyhf_width, b=surro_asyhf_height. 기본값 'boxcar' 는 그대로다.
+flags.DEFINE_enum('fire_surro_grad_func', 'boxcar', ['boxcar', 'sigmoid', 'asym', 'asy_height_fix'], 'surrogate gardient function of fire function')
 flags.DEFINE_float('surrogate_bias', 0,'surrogate gradient bias')
 flags.DEFINE_float('surro_grad_alpha', 0.5, 'surro gradient - const alpha')
 flags.DEFINE_float('surro_grad_beth', 0.5, 'surro gradient - const beta')
+flags.DEFINE_float('surro_asyhf_width', 1.0, 'asy_height_fix: surrogate window half-width w (Surro surro_grad_beth)')
+flags.DEFINE_float('surro_asyhf_height', 0.75, 'asy_height_fix: surrogate height b at vth (Surro asy_height_val)')
 flags.DEFINE_bool('debug_surro_grad',False,'debug suurogate gradient - surrogate gradient of spike fire function')
 flags.DEFINE_integer('debug_surro_grad_per_iter',100,'debug suurogate gradient print iter')
 

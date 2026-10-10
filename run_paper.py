@@ -65,6 +65,12 @@
     ours_ch_end40       ours_ch + reg_spike_loss_ratio_end_ep=40 (310에폭이면 271~310 이 lambda=0)
     ours_ch_end30       ours_ch + end_ep=30
 
+    [서로게이트 손잡이 baseline -- base 와 전부 같고 발화 함수의 서로게이트만 knob 으로 정한다 (26-10-10)]
+    base_sg     knob 형식  ahf-w<폭>-h<높이>   -> 'asy_height_fix' (Surro 2025-11), surro_asyhf_width/height
+                           asym-w<폭>-h<높이>  -> 'asym', surro_grad_alpha(폭)/surrogate_bias(높이 자리)
+                예) python run_paper.py vggdvscm base_sg ahf-w1.0-h0.75 --seeds 1
+                (VGGSNN-DVS 81~82% 를 낸 2025-11 런은 asy_height_fix, w=1.0, b=0.75)
+
 **선별** — 조건당 5런을 돌리고 4개를 쓴다. 배제 규칙은 제안법과 비교군에 똑같이 적용한다:
     (1) 310에폭 미완주  (2) S30/S1 < 0.19  (3) 그래도 5개 남으면 val_acc 상위 4개.
 판정은 `collect_paper.py` 가 한다.
@@ -88,6 +94,8 @@ SOURCES = {
     # _*/ 라 .gitignore 대상이어서 sejong 이 pull 로 못 받는다. 레시피(200ep, batch 32, T=4)와
     # 근거는 그 파일 머리 주석에 있다. 기존 네 조합의 생성 config 는 이 줄과 무관하다.
     'vggdvs':   ('configs_paper/vggdvs',                 'VGGSNN',   'CIFAR10_DVS'),
+    # 26-10-09 vggdvs 의 2025-11 레시피 복원판 (nda_cutmix + 워밍업 20). 근거는 그 파일 머리 주석.
+    'vggdvscm': ('configs_paper/vggdvs_cm',              'VGGSNN',   'CIFAR10_DVS'),
 }
 
 # 모든 방법이 공유하는 바닥값. 켜고 끄는 것을 전부 명시해 원본 상태에 안 기댄다.
@@ -329,6 +337,19 @@ def METHODS(name, knob):
     if name in ('ours_ch_end40', 'ours_ch_end30'):
         src, k = name.rsplit('_end', 1)
         return {**METHODS(src, knob), 'reg_spike_loss_ratio_end_ep': int(k)}
+    if name == 'base_sg':
+        # 26-10-10 규제 없는 baseline 에서 서로게이트만 바꾼다. 원본 config 의 'asym' 대입은
+        # config.set() 앞 덮어쓰기 블록이 이긴다. 폭·높이를 float 로 넣어 verify() 의 repr 비교와 맞춘다.
+        m = re.fullmatch(r'(ahf|asym)-w([0-9.]+)-h([0-9.]+)', str(knob))
+        if not m:
+            raise SystemExit(f'base_sg knob 형식 오류: {knob!r} (예: ahf-w1.0-h0.75, asym-w1.0-h0.6)')
+        fn, w, h = m.group(1), float(m.group(2)), float(m.group(3))
+        if fn == 'ahf':
+            sg = {'fire_surro_grad_func': "'asy_height_fix'", 'surro_asyhf_width': w,
+                  'surro_asyhf_height': h}
+        else:
+            sg = {'fire_surro_grad_func': "'asym'", 'surro_grad_alpha': w, 'surrogate_bias': h}
+        return {**METHODS('base', '-'), **sg}
     raise SystemExit(f'모르는 방법: {name}')
 
 

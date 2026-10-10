@@ -18,8 +18,12 @@ KEY2ARM = {'base':'baseline','prop':'ours_intra_ch','ours_w1':'ours_w1','ours_la
   'ours_ch_end40':'ours_inter_ch end40','ours_ch_end30':'ours_inter_ch end30',
   # 26-10-05 inter x intra 곱 가중 (maxnorm_group='channel_x_within')
   'ours_chxwc':'ours_inter_ch × intra'}
-NAME = re.compile(r'^(r19c10|r19c100|vggdvs)-(.+)-(-|[0-9p]+e-?[0-9]+)-s(\d+)$')
-DS = {'r19c10': 'C10', 'r19c100': 'C100', 'vggdvs': 'DVS'}   # vggdvs = VGGSNN · CIFAR10-DVS (09-29)
+# vggdvscm (10-09) = 2025-11 증강 레시피 복원판 (클립 단위 NDA + CutMix). vggdvs (3월 레시피, 74%) 는 같은 DVS 탭에
+# '(3월 레시피)' 꼬리표로 남긴다 -- 정규식에서 vggdvscm 이 vggdvs 보다 앞에 와야 한다.
+# 26-10-10 base_sg 의 서로게이트 손잡이 (ahf|asym)-w<폭>-h<높이> 도 받는다 ('.'->'p' 변환 후, 예 ahf-w1p0-h0p75).
+NAME = re.compile(r'^(r19c10|r19c100|vggdvscm|vggdvs)-(.+)-(-|[0-9p]+e-?[0-9]+|(?:ahf|asym)-w[0-9p]+-h[0-9p]+)-s(\d+)$')
+DS = {'r19c10': 'C10', 'r19c100': 'C100', 'vggdvs': 'DVS', 'vggdvscm': 'DVS'}   # vggdvs = VGGSNN · CIFAR10-DVS (09-29)
+OLD_DVS_SUFFIX = ' (3월 레시피)'
 def f(x):
     try: return float(x)
     except: return None
@@ -31,7 +35,7 @@ for srv, fn in (('138','inv138.csv'),('23','inv23.csv')):
         if not m: continue
         ds, key, knob, seed = m.groups()
         ep = int(f(r['epochs']) or 0)
-        rec = dict(tag=tag, ds=DS[ds], key=key, arm=KEY2ARM.get(key, key),
+        rec = dict(tag=tag, ds=DS[ds], key=key, arm=KEY2ARM.get(key, key) + (OLD_DVS_SUFFIX if ds == 'vggdvs' else ''),
                    knob=knob.replace('p','.'), seed=int(seed), server=srv, epochs=ep,
                    completed=r['completed'] in ('True','1','true'),
                    train_loss=f(r['train_loss']), train_acc=f(r['train_acc']),
@@ -67,7 +71,7 @@ for l in open(Q):
     if combo not in DS: continue
     if tag not in runs and s in ('todo','run','hold'):
         runs[tag] = dict(tag=tag, ds=DS[combo], key=key,
-                         arm=KEY2ARM.get(key,key), knob=knob, seed=int(seed), server='-',
+                         arm=KEY2ARM.get(key,key) + (OLD_DVS_SUFFIX if combo == 'vggdvs' else ''), knob=knob, seed=int(seed), server='-',
                          epochs=0, completed=False)
     if tag in runs:
         r = runs[tag]; r['queue'] = s; r['qline'] = qline; r['land'] = land

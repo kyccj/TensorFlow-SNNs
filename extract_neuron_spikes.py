@@ -17,6 +17,21 @@ run_dir 은 그 실험의 `config_sweep.py` 가 있는 디렉토리다 (`_vmsil3
     '<layer>__fired' 각 뉴런이 '한 번이라도 발화한' 표본 수
 그리고 'n_samples'(표본 수), 'T'(시간 단계).
 발화율 = 총 발화 / (n_samples * T).
+
+26-10-10 추가 키 (기존 키는 그대로, 추가만):
+    '<layer>__t'       스텝별 발화 횟수, 테스트셋 전체 합  (모양 = [T, *뉴런 모양]).
+                       '<layer>__t'.sum(0) == '<layer>'
+    '<layer>__first_t' (표본, 뉴런) 쌍을 처음 발화한 스텝으로 센 히스토그램 [T+1].
+                       칸 k = 스텝 k+1 에 처음 발화, 마지막 칸 = T 스텝 동안 한 번도 안 쏨.
+                       합 = n_samples * 뉴런 수
+    'logits'           출력층(loc=='OUT') 의 softmax 전 출력 [n_samples, classes].
+                       모델의 snn_output_processing (last_ts / avg) 을 그대로 따른다
+    'logits_t'         같은 값의 스텝별 원본 [n_samples, T, classes]
+    'labels', 'pred'   정답·예측 클래스 [n_samples]  (pred 는 모델 최종 출력의 argmax)
+predictions_n(출력층) 은 스파이크가 아니라 막전위를 내므로 그 층의 __t·__first_t 는
+발화로 읽으면 안 된다 (기존 '<layer>' 도 마찬가지).
+스텝별 값은 추가 forward 없이 얻는다: 뉴런은 매 스텝 spike 를 self.out(TensorArray,
+크기 T) 에 쓰고 배치가 끝나도 그대로 들고 있다. forward 직후 그걸 stack 해서 읽는다.
 """
 import sys, os
 
@@ -81,8 +96,25 @@ print(f'[층] {len(acts)}개: ' + ', '.join(n for n, _ in acts), flush=True)
 T = conf.time_step
 tot = {}          # 뉴런별 총 발화 횟수
 fired = {}        # 뉴런별 '한 번이라도 발화한 표본' 수
+tot_t = {}        # 스텝별 발화 횟수 [T, ...]
+first_t = {}      # 최초 발화 스텝 히스토그램 [T+1]
 n_seen = 0
 n_correct = 0
+
+# 출력층 = loc=='OUT' 인 뉴런 (ResNet/VGG 의 predictions_n). 없으면 마지막 뉴런 층.
+out_acts = [(n, a) for n, a in acts if getattr(a, 'loc', None) == 'OUT']
+out_name, out_act = out_acts[-1] if out_acts else acts[-1]
+out_proc = getattr(model, 'snn_output_processing', 'last_ts')
+print(f'[출력층] {out_name}  (snn_output_processing={out_proc})', flush=True)
+logits_l, logits_t_l, labels_l, pred_l = [], [], [], []
+
+
+def _steps(a):
+    # forward 직후 뉴런의 스텝별 출력 [T, batch, ...]. self.out 은 eager TensorArray 다.
+    o = a.out
+    if not hasattr(o, 'stack'):
+        raise RuntimeError(f'{a.name}.out 이 TensorArray 가 아님 ({type(o)}) -- 스텝별 값을 못 읽는다')
+    return o.stack().numpy().astype(np.float32)
 
 for bi, (x, y) in enumerate(test_ds):
     if max_batches and bi >= max_batches:
@@ -100,10 +132,22 @@ for bi, (x, y) in enumerate(test_ds):
         sc = a.spike_count.numpy()                            # [batch, ...] T 동안의 누적
         s = sc.sum(axis=0)
         f = (sc > 0).sum(axis=0)
+        st = _steps(a)                                        # [T, batch, ...]
+        s_t = st.sum(axis=1)
+        nz = st > 0
+        ft = np.where(nz.any(axis=0), nz.argmax(axis=0), T)   # 표본·뉴런별 최초 발화 스텝 (0-기준, T=안 쏨)
+        h = np.bincount(ft.ravel(), minlength=T + 1)
+        del st, nz, ft
         if name in tot:
             tot[name] += s; fired[name] += f
+            tot_t[name] += s_t; first_t[name] += h
         else:
             tot[name] = s.astype(np.float64); fired[name] = f.astype(np.int64)
+            tot_t[name] = s_t.astype(np.float64); first_t[name] = h.astype(np.int64)
+    lt = np.moveaxis(_steps(out_act), 0, 1)                   # [batch, T, classes]
+    logits_t_l.append(lt)
+    logits_l.append(lt[:, T - 1] if out_proc == 'last_ts' else lt.mean(axis=1))
+    labels_l.append(t.astype(np.int64)); pred_l.append(p.astype(np.int64))
     if bi % 20 == 0:
         print(f'  batch {bi}  표본 {n_seen}  정확도 {100*n_correct/max(1,n_seen):.2f}%', flush=True)
 
@@ -115,6 +159,19 @@ save.update({k + '__fired': v for k, v in fired.items()})
 save['n_samples'] = np.array(n_seen)
 save['T'] = np.array(T)
 save['acc'] = np.array(100 * n_correct / max(1, n_seen))
+# 26-10-10 추가 키. 카운트는 1만 이하 정수라 float32 로 정확하다 (용량 절반).
+save.update({k + '__t': v.astype(np.float32) for k, v in tot_t.items()})
+save.update({k + '__first_t': v for k, v in first_t.items()})
+save['logits'] = np.concatenate(logits_l).astype(np.float32)
+save['logits_t'] = np.concatenate(logits_t_l).astype(np.float32)
+save['labels'] = np.concatenate(labels_l)
+save['pred'] = np.concatenate(pred_l)
+# 자체 점검: 스텝별 합 == 총합, 히스토그램 합 == 표본×뉴런
+for k in tot:
+    d = np.abs(tot_t[k].sum(axis=0) - tot[k]).max()
+    hs = int(first_t[k].sum())
+    if d > 1e-3 * max(1.0, np.abs(tot[k]).max()) or hs != n_seen * tot[k].size:
+        print(f'  [경고] {k}: |__t.sum(0)-총합| 최대 {d:.3g}, __first_t 합 {hs} != {n_seen * tot[k].size}', flush=True)
 np.savez_compressed(out_npz, **save)
 print(f'[저장] {out_npz}', flush=True)
 for name, _ in acts:

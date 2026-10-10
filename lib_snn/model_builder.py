@@ -125,7 +125,9 @@ def model_builder(
         # Surro 의 DVS 분기는 warmup_epochs 말고는 아래 세 줄과 같다 -- 학습률 시작/목표/하한은
         # 공통. 다른 데이터셋은 20 그대로다.
         if conf.dataset == 'CIFAR10_DVS':
-            warmup_epochs = 10
+            # 26-10-09: 고정 10 -> conf.dvs_warmup_epochs (기본 10, 기존 동작 그대로).
+            # vggdvscm(2025-11 레시피 복원)만 20 을 준다.
+            warmup_epochs = conf.dvs_warmup_epochs
         learning_rate = conf.learning_rate_init # initial
         warmup_target = conf.learning_rate
         lr_min=conf.learning_rate_init
