@@ -985,6 +985,12 @@ flags.DEFINE_integer('cifar10_dvs_img_size',48,'cifar10-dvs: img size')
 flags.DEFINE_integer('cifar10_dvs_crop_img_size',54,'cifar10-dvs: img size (before crop, w/ padded)')
 # 26-10-09: CIFAR10-DVS 의 COS 워밍업 에폭 (lib_snn/model_builder.py). 기본 10 은 이전 고정값과 같다.
 flags.DEFINE_integer('dvs_warmup_epochs',10,'cifar10-dvs: COS lr warmup epochs')
+# 26-10-15: 단계별 BN. 기본 False 면 지금까지처럼 BN 이 T 스텝 입력의 시간 평균 한 장에 걸리고 그 결과가
+# 모든 스텝에 복사된다 (lib_snn/model.py 시간 루프의 f_temporal_reduction 분기). True 면 BN 통계(평균·분산,
+# 이동평균)는 배치 x 시간 단계(T*B)에서 내고 정규화는 스텝마다 자기 값에 건다 (tdBN, Zheng et al. AAAI 2021
+# 의 통계 축). 위 'tdbn' 플래그(감마에 Vth 를 곱하는 스케일)와는 별개다.
+# VGGSNN x CIFAR10_DVS 전용 -- 다른 모델·데이터셋에서 켜면 lib_snn/model_builder.py 가 ValueError 로 멈춘다.
+flags.DEFINE_bool('bn_per_step',False,'VGGSNN x CIFAR10_DVS only: BN stats over T*B, normalize each time step')
 
 
 #

@@ -69,11 +69,26 @@ def VGGSNN(
     tdbn_first_layer = conf.nn_mode == 'SNN' and conf.input_spike_mode == 'POISSON' and conf.tdbn
     tdbn = conf.nn_mode == 'SNN' and conf.tdbn
 
+    # 26-10-15 단계별 BN (flags.py 'bn_per_step', 기본 False, run_paper 의 vggdvscmtd 조합만 켠다).
+    # 켜면 BN 층에 temporal_batch=True 를 단다. 그러면 lib_snn/model.py 의 시간 루프
+    # (_run_internal_graph_snn_t_first_k2/k3)가 시간 평균 분기(f_temporal_reduction) 대신 이미 있는
+    # temporal_batch 분기로 간다: [T,B,...] -> [T*B,...] 로 펴서 BN 을 한 번 부르고 -> [T,B,...] 로 되돌려
+    # 스텝별로 쓴다. 학습 시 배치 통계와 이동평균 갱신은 T*B 에서, 정규화는 스텝마다 자기 값에 걸린다.
+    # temporal_batch 분기는 정적 배치 크기가 필요하다 (shape[1] 로 T*B 를 계산). DVS 로더는 drop_remainder=True 라
+    # element_spec 이 (32,4,48,48,2) 로 정적이다. 배치가 None 인 데이터셋을 넣으면 TypeError 로 바로 죽는다.
+    # 꺼져 있으면 kwarg 를 아예 안 넘겨 이전과 같은 층이 만들어진다. 범위 가드는 lib_snn/model_builder.py
+    # (check_bn_per_step_scope); 여기 두 줄은 model_builder 를 거치지 않고 VGGSNN 을 부를 때를 위한 것이다.
+    if conf.bn_per_step and conf.dataset != 'CIFAR10_DVS':
+        raise ValueError(f'bn_per_step=True 는 VGGSNN x CIFAR10_DVS 전용이다 (지금 dataset={conf.dataset!r})')
+    if conf.bn_per_step and not use_bn_feat:
+        raise ValueError('bn_per_step=True 인데 use_bn=False 라 걸 BN 이 없다')
+    bn_kw = {'temporal_batch': True} if conf.bn_per_step else {}
+
     def conv_bn_act(x, ch, name, en_tdbn):
         syn = lib_snn.layers.Conv2D(ch, 3, padding='SAME', kernel_initializer=k_init, name=name)(x)
         if use_bn_feat:
             norm = lib_snn.layers.BatchNormalization(en_tdbn=en_tdbn, dtype=tf.float32,
-                                                     name='bn_' + name)(syn)
+                                                     name='bn_' + name, **bn_kw)(syn)
         else:
             norm = syn
         return lib_snn.activations.Activation(act_type=act_type, name='n_' + name)(norm)
@@ -119,5 +134,11 @@ def VGGSNN(
         a_p = lib_snn.activations.Activation(act_type='softmax', name='a_predictions')(a_p)
 
     model = lib_snn.model.Model(img_input, a_p, batch_size, input_shape, classes, conf, name=model_name)
+
+    # 26-10-15 단계별 BN 이 실제로 걸렸는지 train.log 에서 확인할 수 있게 남긴다 (꺼져 있으면 아무것도 안 찍는다)
+    if conf.bn_per_step:
+        n_tb = sum(1 for l in model.layers
+                   if isinstance(l, lib_snn.layers.BatchNormalization) and l.temporal_batch)
+        print(f'[BN_PER_STEP] BN 층 {n_tb}개 temporal_batch=True (통계 T*B, 정규화 스텝별)', flush=True)
 
     return model

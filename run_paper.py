@@ -70,6 +70,10 @@
                            asym-w<폭>-h<높이>  -> 'asym', surro_grad_alpha(폭)/surrogate_bias(높이 자리)
                 예) python run_paper.py vggdvscm base_sg ahf-w1.0-h0.75 --seeds 1
                 (VGGSNN-DVS 81~82% 를 낸 2025-11 런은 asy_height_fix, w=1.0, b=0.75)
+    ours_ch_sg  ours_ch 와 전부 같고 서로게이트만 knob 으로 정한다 (26-10-10)
+                knob 형식  <rho>@<서로게이트>  (서로게이트 문자열은 base_sg 와 같다)
+                예) python run_paper.py vggdvscm ours_ch_sg 3e-3@ahf-w0.5-h0.75 --seeds 1
+                디렉토리명은 '.'->'p' 만 바뀐다: vggdvscm-ours_ch_sg-3e-3@ahf-w0p5-h0p75-s1
 
 **선별** — 조건당 5런을 돌리고 4개를 쓴다. 배제 규칙은 제안법과 비교군에 똑같이 적용한다:
     (1) 310에폭 미완주  (2) S30/S1 < 0.19  (3) 그래도 5개 남으면 val_acc 상위 4개.
@@ -96,7 +100,35 @@ SOURCES = {
     'vggdvs':   ('configs_paper/vggdvs',                 'VGGSNN',   'CIFAR10_DVS'),
     # 26-10-09 vggdvs 의 2025-11 레시피 복원판 (nda_cutmix + 워밍업 20). 근거는 그 파일 머리 주석.
     'vggdvscm': ('configs_paper/vggdvs_cm',              'VGGSNN',   'CIFAR10_DVS'),
+    # 26-10-15 vggdvs 와 같은 원본 config + '첫 프레임' 입력 (프레임 0 을 T 번 반복해 모든 스텝에 넣는다.
+    # 원본 Surro/Base 코드의 입력 방식). config 는 vggdvs 와 바이트 단위로 같고 main_sweep.py 만
+    # 다르다 (아래 FRAME0). 근거: _ours/vggdvs-base-f0-s1 val 81.96 (n=1) vs vggdvs base 74.40/73.29 (n=2) (decisions.md 10-14).
+    'vggdvsf0': ('configs_paper/vggdvs',                 'VGGSNN',   'CIFAR10_DVS'),
+    # 26-10-15 vggdvscm 과 원본 config·main_sweep.py 가 같고 단계별 BN(bn_per_step=True)만 다르다
+    # (아래 COMBO_FLAGS). 입력은 vggdvscm 그대로 스텝 t 에 프레임 t. 비교 대상 vggdvscm-base---s1~3.
+    'vggdvscmtd': ('configs_paper/vggdvs_cm',            'VGGSNN',   'CIFAR10_DVS'),
 }
+
+# 26-10-15 조합에 묶인 플래그. 방법(METHODS)·BASE 가 아니라 조합에 붙여 방법과 무관하게 이 조합에서만 켠다.
+# 사용자 지시(10-15): 단계별 BN 은 VGGSNN x CIFAR10_DVS 에서만, 다른 방법·조합에는 적용 금지.
+# 여기 없는 조합은 덮어쓰기 블록이 이전과 바이트 단위로 같다 (bn_per_step 줄 자체가 안 생긴다. verify 가 확인).
+# bn_per_step = BN 통계(평균·분산, 이동평균)는 T*B 에서, 정규화는 스텝별 (flags.py 주석).
+COMBO_FLAGS = {'vggdvscmtd': {'bn_per_step': True}}
+
+# 26-10-15 '첫 프레임' 조합. 이 조합만 생성되는 main_sweep.py 의 데이터 로드 직후에 FRAME0_PATCH 를
+# 끼운다 -- lib_snn/·datasets/ 는 안 건드린다. 패치 문자열은 10-14 수동 런 _ours/vggdvs-base-f0-s1 의
+# main_sweep.py 에 들어간 것과 바이트 단위로 같다 (학습·검증·테스트 셋 모두에 적용, 로그에 [FRAME0]).
+# 다른 조합의 main_sweep.py 는 이전과 같다 (make_main 참고).
+FRAME0 = {'vggdvsf0'}
+FRAME0_ANCHOR = '    datasets.datasets.load()\n'
+FRAME0_PATCH = (
+    "# >>> frame0 (26-10-14): 원본 Surro(InputGenLayer 가 inputs[:,0] 반환)와 같이 첫 프레임만 T번 반복 입력.\n"
+    "# vggdvs(nda, 프레임별 독립 증강) 조건에서 입력 노드가 74 vs 82 차이의 원인인지 확정하는 런 (사용자 승인 10-14).\n"
+    "def _f0(x, y):\n"
+    "    return tf.tile(x[:, :1], [1, config.flags.time_step, 1, 1, 1]), y\n"
+    "train_ds = train_ds.map(_f0); valid_ds = valid_ds.map(_f0); test_ds = test_ds.map(_f0)\n"
+    "print('[FRAME0] input = frame 0 repeated T times', flush=True)\n"
+    "# <<< frame0\n")
 
 # 모든 방법이 공유하는 바닥값. 켜고 끄는 것을 전부 명시해 원본 상태에 안 기댄다.
 BASE = {
@@ -123,6 +155,22 @@ VMEM = {'reg_spike_vmem_gain': 1.0, 'reg_spike_vmem_silent_only': True}
 RATIO = lambda rho: {'reg_spike_loss_ratio': True, 'reg_spike_loss_ratio_target': rho,
                      'reg_spike_loss_ratio_start_ep': 0}
 FIXED = lambda lmb: {'reg_spike_loss_ratio': False, 'reg_spike_out_const': lmb}
+
+
+def SG(knob, who):
+    """서로게이트 손잡이 'ahf-w<폭>-h<높이>' / 'asym-w<폭>-h<높이>' -> 덮어쓸 플래그 dict.
+    base_sg 에 있던 파서를 26-10-10 ours_ch_sg 와 공유하려고 함수로 뺐다 (동작 동일).
+    who 는 오류 메시지에 찍을 방법 이름."""
+    m = re.fullmatch(r'(ahf|asym)-w([0-9.]+)-h([0-9.]+)', str(knob))
+    if not m:
+        raise SystemExit(f'{who} knob 형식 오류: {knob!r} (예: ahf-w1.0-h0.75, asym-w1.0-h0.6)')
+    fn, w, h = m.group(1), float(m.group(2)), float(m.group(3))
+    if fn == 'ahf':
+        sg = {'fire_surro_grad_func': "'asy_height_fix'", 'surro_asyhf_width': w,
+              'surro_asyhf_height': h}
+    else:
+        sg = {'fire_surro_grad_func': "'asym'", 'surro_grad_alpha': w, 'surrogate_bias': h}
+    return sg
 
 
 def METHODS(name, knob):
@@ -340,16 +388,15 @@ def METHODS(name, knob):
     if name == 'base_sg':
         # 26-10-10 규제 없는 baseline 에서 서로게이트만 바꾼다. 원본 config 의 'asym' 대입은
         # config.set() 앞 덮어쓰기 블록이 이긴다. 폭·높이를 float 로 넣어 verify() 의 repr 비교와 맞춘다.
-        m = re.fullmatch(r'(ahf|asym)-w([0-9.]+)-h([0-9.]+)', str(knob))
-        if not m:
-            raise SystemExit(f'base_sg knob 형식 오류: {knob!r} (예: ahf-w1.0-h0.75, asym-w1.0-h0.6)')
-        fn, w, h = m.group(1), float(m.group(2)), float(m.group(3))
-        if fn == 'ahf':
-            sg = {'fire_surro_grad_func': "'asy_height_fix'", 'surro_asyhf_width': w,
-                  'surro_asyhf_height': h}
-        else:
-            sg = {'fire_surro_grad_func': "'asym'", 'surro_grad_alpha': w, 'surrogate_bias': h}
-        return {**METHODS('base', '-'), **sg}
+        return {**METHODS('base', '-'), **SG(knob, 'base_sg')}
+    if name == 'ours_ch_sg':
+        # 26-10-10 ours_ch(=ours_inter_ch) 와 전부 같고 서로게이트만 knob 으로 정한다.
+        # knob 형식 '<rho>@<서로게이트>' 예) 3e-3@ahf-w0.5-h0.75 -- '@' 앞은 ours_ch 의 rho,
+        # 뒤는 base_sg 와 같은 서로게이트 문자열 (파서 SG 를 공유한다).
+        rho, sep, sg = str(knob).partition('@')
+        if not sep or not re.fullmatch(r'[0-9.]+e-?[0-9]+', rho):
+            raise SystemExit(f'ours_ch_sg knob 형식 오류: {knob!r} (예: 3e-3@ahf-w0.5-h0.75)')
+        return {**METHODS('ours_ch', rho), **SG(sg, 'ours_ch_sg')}
     raise SystemExit(f'모르는 방법: {name}')
 
 
@@ -368,6 +415,18 @@ MARK_A, MARK_B = '# >>> run_paper overrides', '# <<< run_paper overrides'
 
 def fmt(v):
     return v if isinstance(v, str) else repr(v)
+
+
+def run_flags(combo, method, knob):
+    """덮어쓸 플래그 전체 = 방법(METHODS) + 조합(COMBO_FLAGS). 26-10-15.
+    COMBO_FLAGS 에 없는 조합이면 METHODS 와 같은 dict 다 (생성 config 가 이전과 같다).
+    방법과 조합이 같은 플래그를 정하면 어느 쪽이 이기는지 애매하므로 멈춘다."""
+    want = METHODS(method, knob)
+    cf = COMBO_FLAGS.get(combo, {})
+    both = set(want) & set(cf)
+    if both:
+        raise RuntimeError(f'{combo} {method}: 조합 플래그와 방법 플래그가 겹침 {sorted(both)}')
+    return {**want, **cf}
 
 
 def override_block(flags_d, seed, tag, epochs=0, fix_seed=False):
@@ -403,6 +462,20 @@ def src_text(combo):
     return open(os.path.join(PROJECT_ROOT, src, 'config_sweep.py')).read()
 
 
+def make_main(combo):
+    """런 디렉토리의 main_sweep.py 내용. FRAME0 조합이 아니면 26-10-15 이전과 같은 문자열이다."""
+    m = open(os.path.join(PROJECT_ROOT, 'main_snn_training.py')).read()
+    m = m.replace('from config_snn_training import config', 'from config_sweep import config')
+    if combo in FRAME0:
+        # 기준 줄이 정확히 하나여야 한다. main_snn_training.py 가 바뀌어 못 찾으면 투입 전에 멈춘다
+        # (조용히 평균 프레임으로 도는 것을 막는다).
+        n = m.count(FRAME0_ANCHOR)
+        if n != 1:
+            raise RuntimeError(f'{combo}: main_snn_training.py 의 데이터 로드 줄이 {n}개 (1개여야 함)')
+        m = m.replace(FRAME0_ANCHOR, FRAME0_ANCHOR + FRAME0_PATCH)
+    return m
+
+
 def active_name(txt):
     """주석이 아니라 실제로 마지막에 대입되는 exp_set_name.
     (08-21 에 주석 줄을 치환해 원본 체크포인트를 날린 사고 재발 방지)"""
@@ -423,7 +496,7 @@ def make_config(combo, method, knob, seed, gpu, tag, epochs=0, fix_seed=False):
     c, n = RE_NAME.subn(f"conf.exp_set_name='{tag}'", c)
     if n < 1:
         raise RuntimeError(f'{tag}: 활성 exp_set_name 없음')
-    blk = override_block(METHODS(method, knob), seed, tag, epochs, fix_seed)
+    blk = override_block(run_flags(combo, method, knob), seed, tag, epochs, fix_seed)
     c, n = RE_SET.subn(blk + '\nconfig.set()', c, count=1)
     if n != 1:
         raise RuntimeError(f'{tag}: config.set() 을 못 찾음 ({n}개)')
@@ -447,11 +520,17 @@ def verify(path, combo, method, knob, seed, gpu, tag, epochs=0, fix_seed=False):
     # 블록이 config.set() 앞에 있어야 효력이 있다
     if a.index(MARK_B) > a.rindex('config.set()'):
         raise RuntimeError(f'{tag}: 덮어쓰기 블록이 config.set() 뒤에 있음')
-    # 요청한 플래그가 그대로 들어갔는지
-    want = METHODS(method, knob)
+    # 요청한 플래그가 그대로 들어갔는지 (26-10-15 부터 조합 플래그 COMBO_FLAGS 포함)
+    want = run_flags(combo, method, knob)
     for k, v in want.items():
         if not re.search(rf'^conf\.{re.escape(k)} = {re.escape(fmt(v))}$', a, re.M):
             raise RuntimeError(f'{tag}: {k}={fmt(v)} 가 블록에 없음')
+    # 조합 플래그는 그 조합 밖의 config 에 한 줄도 나타나면 안 된다 (단계별 BN 범위 한정, 사용자 10-15)
+    for k in {k for cf in COMBO_FLAGS.values() for k in cf} - set(want):
+        if re.search(rf'^\s*conf\.{re.escape(k)}\s*=', a, re.M):
+            raise RuntimeError(f'{tag}: {combo} 조합인데 {k} 대입이 config 에 있음')
+    if want.get('bn_per_step') and SOURCES[combo][1:] != ('VGGSNN', 'CIFAR10_DVS'):
+        raise RuntimeError(f'{tag}: bn_per_step 은 VGGSNN x CIFAR10_DVS 전용')
     want_seed = seed if fix_seed else -1
     if not re.search(rf'^conf\.run_seed = {want_seed}$', a, re.M):
         raise RuntimeError(f'{tag}: run_seed={want_seed} 설정 안 됨')
@@ -491,6 +570,12 @@ def preflight(jobs, sweep_dir, epochs=0, fix_seed=False):
     for tok in ('reg_spike_final_step', 'reg_spike_vmem_silent_only'):
         if tok not in nr:
             bad.append(f'lib_snn/neurons.py 에 {tok} 반영 안 됨')
+    # 26-10-15 단계별 BN 조합: 플래그 정의·적용·범위 가드가 이 작업 트리에 다 있어야 한다
+    # (어느 하나라도 옛 파일이면 조용히 평균 BN 으로 돌거나 flags 에서 죽는다)
+    if any(COMBO_FLAGS.get(j[0], {}).get('bn_per_step') for j in jobs):
+        for rel in ('flags.py', 'models/vggsnn.py', 'lib_snn/model_builder.py'):
+            if 'bn_per_step' not in open(os.path.join(PROJECT_ROOT, rel)).read():
+                bad.append(f'{rel} 에 bn_per_step 반영 안 됨')
     if bad:
         raise SystemExit('중단:\n  ' + '\n  '.join(bad))
     os.makedirs(sweep_dir, exist_ok=True)
@@ -501,6 +586,7 @@ def preflight(jobs, sweep_dir, epochs=0, fix_seed=False):
             verify(tmp, combo, method, knob, seed, 0, tag, epochs, fix_seed)
         finally:
             os.remove(tmp)
+        make_main(combo)    # FRAME0 조합의 기준 줄 확인 (파일은 안 쓴다)
     print(f'사전 점검 통과: {len(jobs)}개 config 생성·검증 완료', flush=True)
 
 
@@ -510,9 +596,7 @@ def run_one(gpu, combo, method, knob, seed, tag, sweep_dir, epochs=0, fix_seed=F
     cfg = os.path.join(d, 'config_sweep.py')
     open(cfg, 'w').write(make_config(combo, method, knob, seed, gpu, tag, epochs, fix_seed))
     verify(cfg, combo, method, knob, seed, gpu, tag, epochs, fix_seed)
-    m = open(os.path.join(PROJECT_ROOT, 'main_snn_training.py')).read()
-    open(os.path.join(d, 'main_sweep.py'), 'w').write(
-        m.replace('from config_snn_training import config', 'from config_sweep import config'))
+    open(os.path.join(d, 'main_sweep.py'), 'w').write(make_main(combo))
     env = os.environ.copy()
     env['PYTHONPATH'] = d + ':' + PROJECT_ROOT + ':' + env.get('PYTHONPATH', '')
     env['LD_LIBRARY_PATH'] = CUDA_LD_PATH + ':' + env.get('LD_LIBRARY_PATH', '')

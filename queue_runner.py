@@ -29,8 +29,9 @@ def _rows(path):
         return [l.rstrip('\n') for l in f]
 
 
-def claim(path, prio_first=True):
-    """todo 한 줄을 원자적으로 집어 run: 으로 바꾸고 그 항목을 돌려준다."""
+def claim(path, prio_first=True, only=None):
+    """todo 한 줄을 원자적으로 집어 run: 으로 바꾸고 그 항목을 돌려준다.
+    only 가 주어지면 그 조합(세 번째 열)의 행만 후보로 본다 (26-10-15, --only-combo)."""
     with open(path, 'r+') as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         try:
@@ -40,7 +41,7 @@ def claim(path, prio_first=True):
                 if not l or l.startswith('#'):
                     continue
                 c = l.split('\t')
-                if len(c) >= COLS and c[0] == 'todo':
+                if len(c) >= COLS and c[0] == 'todo' and (not only or c[2] in only):
                     cand.append((int(c[1]) if c[1].isdigit() else 9, i, c))
             if not cand:
                 return None
@@ -52,6 +53,16 @@ def claim(path, prio_first=True):
             return i, c
         finally:
             fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def _todo_match(line, only):
+    """빈 큐 판정용: todo 행이고 (only 가 있으면) 그 조합이면 True. only 없으면 옛 판정과 같다."""
+    if not line.startswith('todo\t'):
+        return False
+    if not only:
+        return True
+    c = line.split('\t')
+    return len(c) > 2 and c[2] in only
 
 
 def finish(path, idx, status):
@@ -108,13 +119,15 @@ def busy_gpus(max_mib=200):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--gpus', required=True, help='쓸 GPU (예: 3,4). 6,7 은 juyun 것이라 넣지 말 것')
+    ap.add_argument('--gpus', required=True, help='쓸 GPU (예: 3,4). canus 6,7 도 10-13 부터 허용')
     ap.add_argument('--queue', default=os.path.join(ROOT, '_queue/QUEUE.tsv'))
     ap.add_argument('--dir', default='_paper')
     ap.add_argument('--poll', type=int, default=180, help='빈 GPU 확인 주기(초)')
     ap.add_argument('--exit-when-empty', action='store_true',
                     help='큐가 비면 종료 (09-25 이전 동작). 기본은 계속 대기한다')
     ap.add_argument('--dry', action='store_true')
+    ap.add_argument('--only-combo', default='', metavar='COMBO[,COMBO]',
+                    help='이 조합(큐 3열)의 행만 집는다 (예: vggdvsf0). 기본은 전부. 로컬 큐 전용')
     ap.add_argument('--remote', default='', metavar='USER@HOST',
                     help='큐 주인 서버. 주면 claim/finish 를 SSH 로 위임한다 '
                          '(공유 파일시스템 없이 서버 간 큐 공유)')
@@ -124,9 +137,11 @@ def main():
                     help='큐 주인 서버의 sshd 포트 (canus 는 22 가 아니라 23456)')
     a = ap.parse_args()
     gpus = [int(x) for x in a.gpus.split(',')]
-    # GPU 6,7 금지는 canus 에만 해당한다 (juyun 소유). 다른 서버는 자기 GPU 를 다 쓴다.
-    if socket.gethostname() == 'canus':
-        assert not (set(gpus) & {6, 7}), 'canus 의 GPU 6,7 은 juyun 소유다'
+    only = {x for x in a.only_combo.split(',') if x}
+    if only and a.remote:
+        raise SystemExit('--only-combo 는 --remote 와 같이 쓸 수 없다 (원격 claim 은 필터를 모른다)')
+    # 26-10-13 사용자 "큐 실행기도 6,7번 쓸 수 있게 고쳐줘": canus GPU 6,7 금지(juyun 소유) 해제.
+    # 이전에는 여기서 canus 의 6,7 을 assert 로 막았다.
     running = {}                       # gpu -> (Popen, idx, item)
     idle = False                       # 큐가 빈 상태를 한 번만 알리려고
 
@@ -151,7 +166,7 @@ def main():
         for g in free:
             tag = f'{socket.gethostname()}:gpu{g}'
             got = (remote_claim(a.remote, a.remote_root, tag, a.remote_port) if a.remote
-                   else claim(a.queue))
+                   else claim(a.queue, only=only or None))
             if not got:
                 break
             idx, c = got
@@ -175,7 +190,7 @@ def main():
                 empty = bool(free) and got is None
             else:
                 with open(a.queue) as f:
-                    empty = not any(l.startswith('todo\t') for l in f)
+                    empty = not any(_todo_match(l, only) for l in f)
             if empty:
                 # 09-25: 예전에는 여기서 return 했다. 큐가 한 번 비면 러너가 죽고, 나중에
                 # 큐를 채워도 그 GPU 를 볼 러너가 없어 자리가 놀았다 (sejong 0~3번이

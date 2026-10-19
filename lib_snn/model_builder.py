@@ -23,6 +23,23 @@ import utils
 import collections
 
 
+def check_bn_per_step_scope():
+    """26-10-15 단계별 BN(conf.bn_per_step) 범위 가드. 사용자 지시(10-15): VGGSNN x CIFAR10_DVS 에서만.
+    켜는 곳은 models/vggsnn.py 하나뿐이라 다른 모델에서는 원래 아무 효과가 없지만, 켠 줄 알고 돈 런이
+    조용히 평균 BN 으로 도는 것을 막으려고 모델을 만들기 전에 멈춘다. 꺼져 있으면 아무것도 안 한다."""
+    if not conf.bn_per_step:
+        return
+    if conf.model != 'VGGSNN' or conf.dataset != 'CIFAR10_DVS':
+        raise ValueError(f'bn_per_step=True 는 VGGSNN x CIFAR10_DVS 전용이다 '
+                         f'(지금 model={conf.model!r}, dataset={conf.dataset!r})')
+    # 단계별 BN 은 시간 우선 SNN 루프(lib_snn/model.py 의 _run_internal_graph_snn_t_first_*)의
+    # temporal_batch 분기로만 동작한다. 그 루프를 안 타는 설정이면 플래그가 조용히 무시되므로 멈춘다.
+    if conf.nn_mode != 'SNN' or conf.snn_training_spatial_first:
+        raise ValueError(f'bn_per_step=True 는 nn_mode=SNN, snn_training_spatial_first=False 에서만 동작한다 '
+                         f'(지금 nn_mode={conf.nn_mode!r}, '
+                         f'snn_training_spatial_first={conf.snn_training_spatial_first!r})')
+
+
 def model_builder(
     num_class,
     train_steps_per_epoch,
@@ -30,6 +47,7 @@ def model_builder(
 ):
 
     print('Model Builder - {}'.format(conf.nn_mode))
+    check_bn_per_step_scope()   # 26-10-15 bn_per_step 범위 가드 (꺼져 있으면 no-op)
     glb.model_compile_done_reset()
 
 

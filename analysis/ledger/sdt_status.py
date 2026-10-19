@@ -8,9 +8,10 @@ ssh 가 실패·초과하면 빈 목록을 쓴다 (원장 갱신 전체가 죽�
 새 학습 묶음(ImageNet 전체 본 런 등)은 ROOTS 에 한 줄 더하면 된다. 폴더 이름 규칙:
   <접두>_base_g<gpu>            -> baseline (규제 없음)
   <접두>_rho<ρ>_g<gpu>          -> ours_inter_ch, knob = ρ
-  <접두>_ctrl / <접두>_rho<ρ>   -> (SDT1K) _g<gpu> 없음 = 8 GPU 한 런, gpu '0-7'. ctrl = baseline
+  <접두>_ctrl / <접두>_rho<ρ>   -> (SDT1K) _g<gpu> 없음. gpu 는 meta.txt 의 gpus= (없으면 '0-7'). ctrl = baseline
+  <접두>_kd_ctrl / <접두>_kd_rho<ρ> -> 지식 증류(KD) 런 (10-15~, main_kd.sh). knob 에 '+KD' 를 붙인다
 """
-import datetime as dt, json, re, subprocess, sys
+import datetime as dt, json, os, re, subprocess, sys
 from pathlib import Path
 
 HOST = ('-p', '23456', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', 'kyccj@161.122.23.23')
@@ -60,6 +61,7 @@ for R in roots:
             pm = re.findall(r'\bpid=(\d+)', meta)
         pid = pm[-1] if pm else None
         seed = re.search(r'--seed[ =](\d+)', meta)
+        gm = re.search(r'\bgpus=(\S+)', meta)          # main_*: 2 GPU 쌍 (launcher 가 meta 첫 줄에 기록)
         tl = rd(d + '/train.log').splitlines()
         # train.log: 에폭마다 '* Acc@1 ... / Total spikes' 가 (모델, EMA) 순서로 두 번 -> 짝수 번째가 모델
         sp = [float(m.group(1)) for m in (re.match(r'\s*Total spikes:\s*([\d.]+)', l) for l in tl) if m][0::2]
@@ -84,6 +86,7 @@ for R in roots:
             mt = None
         out.append({'ds': R['ds'], 'name': name, 'total': R['total'], 'seed': int(seed.group(1)) if seed else 0,
                     'alive': bool(pid and alive(pid, name)), 'pid': pid, 'rows': slim, 'ep_s': ep_s, 'mtime': mt,
+                    'gpus': gm.group(1) if gm else None,
                     'done_file': os.path.exists(d + '/DONE')})   # 런처가 정상 종료 시 touch (2에폭 보정처럼 total 보다 짧게 끝낸 런도 done)
 print(json.dumps({'now': now, 'runs': out}))
 """
@@ -111,6 +114,10 @@ def main():
             knob += ' ' + m.group(4)
         if r['ds'] == 'SDT1K' and m.group(1) == 'calib':   # 보정과 본 런이 같은 칸에 겹치지 않게 knob 에 표시
             knob = (knob if knob != '-' else '0') + ' (보정)'
+        if re.search(r'(?:^|_)kd$', m.group(1)):          # main_kd_*: 접두가 'main_kd'
+            # 안 붙이면 main_kd_ctrl 이 main_ctrl 과 같은 tag(sdt1k-baseline---s0)·칸이 돼 평균에 섞인다.
+            # 공백 대신 '+': tag 가 원장 artifact db 문서 id(notes/<tag>)로 쓰여 공백이 허용되지 않는다
+            knob = (knob if knob != '-' else '0') + '+KD'
         rows, total = r['rows'], r['total']
         ep = len(rows)
         if r.get('done_file'):
@@ -123,13 +130,18 @@ def main():
             per = r['ep_s']
             if per:
                 eta = (now + dt.timedelta(seconds=per * (total - ep))).strftime('%m-%d %H:%M')
-        jobs.append({'ds': r['ds'], 'arm': arm, 'knob': knob, 'seed': r['seed'], 'server': '23', 'gpu': m.group(5) or '0-7',
+        jobs.append({'ds': r['ds'], 'arm': arm, 'knob': knob, 'seed': r['seed'], 'server': '23',
+                     'gpu': m.group(5) or r.get('gpus') or '0-7',
                      'status': st, 'dir': r['name'], 'epochs': ep, 'total': total, 'dir': r['name'],
                      'train_loss': last[0], 'train_acc': last[1], 'val_loss': last[2],
                      'val_acc': max(accs) if accs else None, 'val_last': last[3], 'spikes': last[4],
                      'eta': eta, 'epoch_s': r['ep_s'],
                      'finished': dt.datetime.fromtimestamp(r['mtime']).strftime('%Y-%m-%d %H:%M') if (st == 'done' and r['mtime']) else None})
-    json.dump({'jobs': jobs}, open(W / 'sdt.json', 'w'), ensure_ascii=False)
+    # 원자적 교체: 쓰다 죽어도 반쯤 쓴 sdt.json 이 남아 build_ledger.py 의 json.load 를 깨지 않게
+    tmp = W / 'sdt.json.tmp'
+    with open(tmp, 'w') as f:
+        json.dump({'jobs': jobs}, f, ensure_ascii=False)
+    os.replace(tmp, W / 'sdt.json')
     print('sdt:', [(j['arm'], j['knob'], j['status'], j['epochs']) for j in jobs])
 
 

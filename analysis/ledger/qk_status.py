@@ -87,7 +87,16 @@ import queue_qk                                  # 실행기의 작업 목록(AL
 # (queue_qk.py 에 넣으면 그 실행기가 재시작될 때 다시 띄우려 들 수 있어 원장에서만 안다.)
 EXTRA_JOBS = [(n, 'train', None, 'canus') for n in
               ['ours_ch_rho1.2e-2_s43', 'ours_ch_rho1.2e-2_s44', 'ours_ch_rho1.2e-2_s45',
-               'c100_ours_ch_rho1.2e-2_s43', 'c100_ours_ch_rho1.2e-2_s44', 'c100_ours_ch_rho1.2e-2_s45', 'c100_ours_ch_rho1.2e-2_s46']]
+               'c100_ours_ch_rho1.2e-2_s43', 'c100_ours_ch_rho1.2e-2_s44', 'c100_ours_ch_rho1.2e-2_s45', 'c100_ours_ch_rho1.2e-2_s46',
+               'c100_ours_ch_rho6e-3_s43',
+               # 10-13 사용자 승인: C10 무손실 범위 ρ 사다리 (시드 42, GPU 4·5)
+               'ours_ch_rho1e-3', 'ours_ch_rho2e-3', 'ours_ch_rho3e-3', 'ours_ch_rho5e-3',
+               # 10-14 사용자 'C100 inter 6e-3 도 돌려봐야 해': n=1 → 4 (canus GPU 6·7)
+               'c100_ours_ch_rho6e-3_s44', 'c100_ours_ch_rho6e-3_s45', 'c100_ours_ch_rho6e-3_s46',
+               # 10-17 사용자 'QK 2e-2 큐에 넣어줘': C10 ρ 2e-2 (시드 42), wait_launch_c10_rho2e-2.sh 가 빈 GPU 에 띄움
+               'ours_ch_rho2e-2',
+               # 10-18 ρ 2e-2 무손실 (−44%) → 시드 43~45 (n=4), wait_launch_c10_rho2e-2_seeds.sh
+               'ours_ch_rho2e-2_s43', 'ours_ch_rho2e-2_s44', 'ours_ch_rho2e-2_s45']]
 ALL_JOBS = list(queue_qk.ALL_JOBS) + EXTRA_JOBS
 
 # sejong 런은 그쪽에서 읽는다: 이름 -> [pid, gpu, 에폭, 최고 eval_top1]
