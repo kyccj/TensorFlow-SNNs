@@ -1,0 +1,115 @@
+--- /tmp/claude-1002/-home-kyccj-PycharmProjects-TensorFlow-SNNs/291eebe0-2201-4ffb-bf39-2fb01ccd5a4a/scratchpad/sdtft/spike_reg.py	2026-10-08 22:03:57.102888426 +0900
++++ patched/spike_reg.py	2026-10-12 14:23:15.070379287 +0900
+@@ -57,6 +57,7 @@
+         # TF ours_ch 는 reg_spike_lr_brake=False 라 성장 상한이 없다. 같게 0(해제)을 기본으로.
+         self.growth_cap = 0.0
+         self.skip = ("lif",)        # 출력(head) 뉴런 -- TF loc=='HID' 만 규제하는 것에 대응
++        self.impl = "fast"          # 'fast' (26-10-12) | 'orig' (진행 중 런과 같은 원래 경로)
+ 
+     @staticmethod
+     def from_args(args):
+@@ -70,12 +71,13 @@
+         cfg.growth_cap = getattr(args, "reg_growth_cap", 0.0)
+         skip = getattr(args, "reg_skip", "lif")
+         cfg.skip = tuple(s for s in skip.split(",") if s)
++        cfg.impl = getattr(args, "reg_impl", "fast")
+         return cfg
+ 
+     def __repr__(self):
+         return ("SpikeRegConfig(enabled={0.enabled}, sc_rate={0.sc_rate}, vmem_gain={0.vmem_gain}, "
+                 "rho={0.rho:.3g}, start_ep={0.start_ep}, lam_max={0.lam_max:.3g}, "
+-                "growth_cap={0.growth_cap}, skip={0.skip})".format(self))
++                "growth_cap={0.growth_cap}, skip={0.skip}, impl={0.impl})".format(self))
+ 
+ 
+ # ---------------------------------------------------------------- 규제항
+@@ -158,6 +160,71 @@
+ 
+ REG = SpikeRegState()
+ 
++# ---------------------------------------------------------------- 빠른 경로 (26-10-12)
++# 원본(_L2NormWtaRev + channel_weight)과 같은 R·기울기(w^2 경로). 활성 크기 임시 텐서를 층마다
++# 4~5개 만들던 것을 없앴다. 171M 1x8 단일 GPU 측정: 규제 overhead +57% -> +26%.
++# 검증: fp32·결정적 모드에서 R 동일, 파라미터 기울기 상대차 4.8e-4 (AMP 에서는 원본끼리도 2.3%).
++
++class _ChannelRegNorm(torch.autograd.Function):
++    """R = || out*norm*w ||_2 를 활성 크기 임시 텐서 없이 계산.
++
++    원본 경로:  x = (out*norm)*w  (fp32 전체 사본)  →  _L2NormWtaRev: sqrt(sum(x*x)), backward w/||x||
++               → autograd 가 (*w)(*norm) 을 거쳐 out 에 g*norm*w^2/R  (w^2 경로)
++    여기:      채널합 s_c = sum_공간 out^2  (작은 텐서)  →  R = norm*sqrt(sum w^2 s_c)
++               backward 는 g*norm*w^2/R 를 [T,B,C,1..] 크기로 만들어 expand (복사 없음)
++    """
++
++    @staticmethod
++    def forward(ctx, out, w, norm):
++        red = tuple(range(3, out.dim()))
++        if red:
++            s = torch.sum(out * out, dim=red, keepdim=True, dtype=torch.float32)
++        else:
++            s = (out * out).float()
++        r2 = torch.sum(w * w * s)
++        nrm = torch.sqrt(r2) * norm
++        ctx.save_for_backward(w, nrm)
++        ctx.norm = norm
++        ctx.shape = out.shape
++        ctx.dtype = out.dtype
++        return nrm
++
++    @staticmethod
++    def backward(ctx, g):
++        w, nrm = ctx.saved_tensors
++        safe = torch.where(nrm > 0, nrm, torch.ones_like(nrm))
++        gs = g * ctx.norm * w * w / safe * (nrm > 0).to(g.dtype)
++        return gs.to(ctx.dtype).expand(ctx.shape), None, None
++
++
++def channel_weight_fast(out, x, norm, gain):
++    """channel_weight 와 같은 값. 전체 크기 연산을 원래 dtype(fp16)으로 한 번만 하고 합은 fp32."""
++    with torch.no_grad():
++        if gain > 0.0:
++            scp = torch.where(out > 0, out * norm, (x * 2.0).clamp_(0.0, 1.0) * gain)
++        else:
++            scp = out * norm
++        if scp.dim() >= 4:
++            ch = torch.sum(scp, dim=tuple(range(3, scp.dim())), keepdim=True, dtype=torch.float32)
++        else:
++            ch = scp.float()
++        m = ch.amax(dim=2, keepdim=True)
++        return 1.0 - torch.where(m > 0, ch / m.clamp_min(1e-12), torch.zeros_like(ch))
++
++
++def _make_fast_hook(cfg, state):
++    def hook(module, inputs, out):
++        if not (module.training and state.enabled and torch.is_grad_enabled()):
++            return
++        norm = float(getattr(module, "norm", 1.0)) or 1.0
++        if cfg.sc_rate == "inter_ch":
++            w = channel_weight_fast(out.detach(), inputs[0].detach(), norm, cfg.vmem_gain)
++        else:
++            w = torch.ones([1] * out.dim(), device=out.device, dtype=torch.float32)
++        state.parts.append(_ChannelRegNorm.apply(out, w, norm))
++        state.spike_parts.append(out.detach().sum(dtype=torch.float32))
++    return hook
++
+ _NEURON_CLASS_NAMES = ("Multispike", "Multispike_first")
+ 
+ 
+@@ -186,7 +253,7 @@
+     block3.*.lif 는 경로가 달라 제외되지 않는다 -- large 에선 forward 에서 안 쓰여 기여 0).
+     """
+     state = state if state is not None else REG
+-    hook = _make_hook(cfg, state)
++    hook = _make_fast_hook(cfg, state) if getattr(cfg, "impl", "fast") == "fast" else _make_hook(cfg, state)
+     handles, names, skipped = [], [], []
+     for name, m in model.named_modules():
+         if type(m).__name__ not in _NEURON_CLASS_NAMES:
+@@ -310,6 +377,8 @@
+                    help="에폭당 λ 성장 상한 배수 (0 = 해제, TF ours_ch 와 같음)")
+     g.add_argument("--reg_skip", default="lif", type=str,
+                    help="규제 제외 모듈 전체 경로, 쉼표 구분")
++    g.add_argument("--reg_impl", default="fast", choices=["fast", "orig"],
++                   help="fast = 활성 크기 임시 텐서 없는 같은 계산 (기본), orig = 10-09 본 런과 같은 원래 경로")
+     g.add_argument("--reg_init_batches", default=0, type=int,
+                    help="학습 전 이 수만큼 배치(rank 당)로 L_task/R 을 재서 첫 에폭 λ 를 ρ L/R 로 "
+                         "초기화 (0 = 끔, 첫 에폭 λ=0). reg_start_ep>0 이면 무시")

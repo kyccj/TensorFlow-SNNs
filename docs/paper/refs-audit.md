@@ -750,3 +750,238 @@ SPEAR 의 ICLR 2026 채택과 부록 Table 7; DT-SNN 게재 학회; Spikingforme
 - Deng TNNLS 서지의 저널 페이지 직접 확인, BPSR 서지의 저자·쪽수, Hoyer regularizer (Datta) 의 학회 게재.
 - SPEAR 의 ICLR 2026 채택, ICML 2026 PMLR v306 에서 SNN 제목 36편 중 위 외에 스파이크 감소를 다루는 것: "SpikeNet: Sparse Spike-Driven Mask Vector Transformer" (포인트클라우드, Zhou 외, 본문 미확인)와 "Narrowing the ANN–SNN Gap … Sparsity-Regularized Transform Encoding" (1D 시계열)이 제목에 sparse 가 있으나 읽지 않았다.
 - ECCV 2024 는 `ecva.net` 목록 제목만 봤고 CVF 쪽 ECCV 목록은 404 였다.
+
+## 2026-10-13 규제 기반 효율화 추가 조사
+
+의뢰: "규제로 SNN 효율을 높인 연구 중 SOPs·spikes·발화율로 우리 방법과 직접 비교할 수 있는 것, 우리 실험 모델과 같은 것." 10-09 기록의 "추가 웹 검색 2회, 새 논문 0편" 이후 검색어와 경로를 넓혔다. 기존 `compare-list-261009.md` 30행과 이 파일의 앞선 절은 다시 조사하지 않았고, 새 수치를 찾은 경우에만 "기존 항목 갱신"에 적었다. 전수 조사가 아니다.
+
+**우리 기준값 (비교용).** R19 C10 T=4 baseline 96.73 (n=6, 489K spikes/sample) → inter 96.74 @342K (−30%, n=3), intra 96.59 @192K (−60%, n=5). R19 C100 T=4 80.70 (n=5, 450K). QKFormer C10 T=4 96.21 @951K → 96.13 @520K (−45%, n=2). 아래 외부 논문은 spikes/sample 이 아니라 FR·SOPs·mJ 를 보고하므로 각 논문 안의 baseline 대비 변화로만 비교한다.
+
+### 0. 검색 경로와 횟수
+
+| 경로 | 횟수·범위 | 비고 |
+|---|---|---|
+| WebSearch (일반 웹) | 약 47회 | 영어 키워드: spike regularization, firing rate regularization, sparsity regularization spiking, activity regularization, energy-aware loss, SOPs reduction, synaptic operations penalty, spike count loss, low firing rate, spike-driven transformer sparsity, lateral inhibition spiking regularization, membrane potential regularization, rate regularization ResNet-19, CIFAR10-DVS VGGSNN firing rate, QKFormer/E-SpikeFormer firing rate, Hoyer, polarization 등. 학회 이름(ICLR/CVPR/ICCV/AAAI 2026 등) 붙인 질의 포함 |
+| OpenReview 검색 API | 질의 약 90개 (4묶음), 노트 약 2,900건 수집 | `api2.openreview.net/notes/search` 가 **제목·초록·TLDR 을 돌려준다.** 노트 API 와 PDF 는 브라우저 검증(403)으로 막혀 있어 우회하지 않았다 |
+| OpenAlex API | 인용 그래프 9편(BPSR, Suetake, Deng, Allred, Sorbaro, Sakemi, Narduzzi, Pellegrini, SCA)의 2021~2026 인용 논문 252건, 초록 검색 17개 질의, "spiking" 제목 2023~2026 13,000건 | 학회 논문(NeurIPS/ICLR/ICML/CVPR)은 누락이 많아 보조로만 썼다 |
+| arXiv API | 질의 약 8개 (제목·초록·분류 조합) + PDF 직접 내려받아 `pdftotext` | 초록의 `AND` 조합은 잡음이 크다 |
+| 학회 공식 목록 제목 전수 스캔 | NeurIPS 2024(4,493)·2025(5,823), ICLR 2025(3,703)·2026(5,351), ICML 2024(2,616)·2025(3,332)·2026(6,562), CVPR 2024(2,716)·2025(2,871)·2026(4,042), ICCV 2023(2,156)·2025(2,701) 편 | `spik|snn|neuromorph` 제목 필터. 결과는 3절 |
+| 쓰지 못한 경로 | dblp 검색 API(봇 차단), Semantic Scholar(429), OpenReview PDF(브라우저 검증), Springer/IEEE 본문(페이월), air.uniud.it PDF(403) | 우회 시도 안 함 |
+
+**제목 전수 스캔 결과.** 위 학회 목록에서 "스파이크·발화·SOPs 감소가 목적인 학습법"으로 읽히는 제목은 모두 앞선 절에 있는 것뿐이다: Activity Pruning·MI-TRQR (NeurIPS 2025), UniSparse·Spik4lite (ICML 2026), TP-Spikformer (ICLR 2026), QP-SNN·Sparse Structure Learning (ICLR 2025), SCA·STATA (ICML 2024). CVPR 2024~2026·ICCV 2023·2025 에는 해당 제목이 없다(SpikePack 은 하드웨어 호환 정보 흐름, SpiLiFormer 는 어텐션 구조). **정식 게재된 탑 학회 논문 중 새로 나온 것은 0편이다.** 새로 나온 것은 아래처럼 ICLR 2027 **심사 중 제출본**과 비탑 학술지·arXiv 다.
+
+### 1. 새로 찾은 논문
+
+우리 방법과의 비교 가능성: ◎ 같은 모델·데이터(T 는 다를 수 있음) / ○ 비슷 / △ 참고.
+
+**1-A. 손실·규제로 스파이크를 줄이는 것**
+
+| # | 논문·저자·학회·연도·URL | 방법 한 줄 | 닮은 점 / 다른 점 | 모델·데이터·T | baseline → 방법, 효율 (출처 위치) | n | 코드 | 비교 |
+|---|---|---|---|---|---|---|---|---|
+| N1 | **SRSC**, "Spike Regularization and Curriculum Based Direct Training of SNNs for Energy-Efficient Inference". 저자 익명. **ICLR 2027 제출본, 심사 중** (OpenReview 공개 2026-09-19, 수정 2026-10-05). https://openreview.net/forum?id=I3qQofwTxx | 모든 층의 스파이크 텐서에 시간 가중 벌점. 검증 정확도가 임계를 넘을 때까지 무시할 만큼 작게 두다가 천장까지 기하급수로 올림. 파라미터·구조 추가 없음. 천장만 튜닝 | 닮음: 손실 항만 사용, 뉴런·구조 불변, 정확도 유지 주장, 모델이 우리와 같음, 정확도 기준으로 벌점 크기를 정하는 일정. 다름(초록 기준): 벌점이 균등(시간 가중)이고 경쟁 가중 없음, 천장은 수동 튜닝(우리는 ρ·L_task/R 자동), 막전위 항·final_step 언급 없음 | VGG, ResNet, transformer 계열 / CIFAR-10, CIFAR-100, DVS-CIFAR10, ImageNet. T 미확인 | **초록만 확인.** "state-of-the-art 정확도와 R19 C10 ±0.5%, VGGSNN DVS-CIFAR10 ±0.75% 이내, FR −49% / −44%, SOPs −24% / −16%, 모두 relative to state-of-the-art methods". 비교 대상 방법·자기 baseline 정확도·T·λ·표 수치 **미확인**. TLDR: "firing rates by up to 49%" | 미확인 | 미확인 | ◎ (모델) |
+| N2 | **"Beyond Firing Less: Activity Objectives Shape Population Organization in a Spike-Driven Transformer"** (PopFR-CV). 저자 익명. **ICLR 2027 제출본, 심사 중** (2026-09-15). https://openreview.net/forum?id=ay5isa4N9N | Spike-Driven Transformer 에 활동 목적함수 여러 개(입력별 집단 발화율의 변동계수 CV 보상 PopFR-CV, 평균 발화율, lifetime sparsity, entropy 계열)를 걸고 학습 후 통계를 측정 | 닮음: SDT 에서 스파이크 활동에 규제항. 다름: 효율 비교표가 아니라 **현상 분석.** 목적함수의 방향과 측정된 결과가 반대로 나옴 | Spike-Driven Transformer, 정적 이미지 3개 데이터셋(CIFAR-100 포함, 나머지 미확인), T 미확인 | 초록만: 평가 CV 가 10배 이상 감소, 같은 크기 텐서의 침묵 좌표 비율 +30%p 이상, 평균 발화는 소폭 감소, 최종 정확도는 비슷, 변화는 어텐션 경로의 활동 철수에 국한 | 미확인 | 미확인 | ○ (모델), 수치는 효율 아님 |
+| N3 | Louis, Miramond, Pegatoquet, Girard, "On Reducing Activity with Distillation and Regularization for Energy Efficient SNNs", arXiv 2406.18350 (2024-06). 게재처: OpenAlex 가 Springer LNCS 로 표기, **확인 못 함.** https://arxiv.org/abs/2406.18350 | 지식 증류 + 활성(L1/L2) 규제 + 로짓 규제(새 제안), 균등 벌점·수동 λ | 닮음: 정확도 유지하며 스파이크 감소. 다름: 균등, 모델 약함 | SVGG-11 CIFAR-10 T=4(교사 VGG-16), MNIST SCNN T=10, GSC Res-8 T=4 | Table III CIFAR-10 VGG11: KD 86.5% (δAcc −0.17%) / 총 스파이크 −8.51%, LogReg 86.47% (−0.20%) / **−14.32%**, ActReg 86.41% (−0.27%) / −7.3% (δAcc 가 절대·상대 중 무엇인지 미확인). 본문: 활성 규제는 CIFAR-10 에서 스파이크율 −8% 부터 정확도가 떨어지기 시작. Table III 의 절대 스파이크 값(21~23k)은 단위·정의 미확인 | 없음 | 미확인 | △ (86% 대 모델) |
+| N4 | Fontanini, Pilotto, Esseni, Loghi, "Reducing the spike rate of deep spiking neural networks based on time-encoding", Neuromorphic Computing and Engineering 2024, doi 10.1088/2634-4386/ad64fd. https://air.uniud.it/handle/11390/1287104 | TTFS 부호화에서 첫 스파이크 이후 스파이크에 벌점. 침묵 뉴런 방지용 2단계 학습 | 닮음: 스파이크 벌점이 침묵 뉴런을 만드는 문제를 명시하고 처리 방식을 제안(우리 vmem 항과 같은 문제). 다름: TTFS | 미확인 (초록만) | **수치 미확인** (PDF 403) | 미확인 | 미확인 | △ |
+| N5 | Krausse, Neher, Knobloch, Becker (KIT), "How Activity Regularization Harms the Performance of Pruned Spiking Neural Networks", ICONS 2025 pp.82-88, doi 10.1109/ICONS69015.2025.00022. https://publikationen.bibliothek.kit.edu/1000189008 | 제목만 확인. 활동 규제와 가중치 프루닝을 같이 쓸 때의 부작용으로 읽힘(추정) | Activity Pruning 이 "활동 규제와 가중치 프루닝은 보완적"이라 한 것과 반대 방향 | 미확인 | **초록·본문 접근 못 함, 수치 미확인** | 미확인 | 미확인 | △ |
+| N6 | **SBMVTrack**, "Spike-Budgeted Multi-View Learning for Power-Efficient UAV Tracking". 저자: Zhong, Mo, Li 외. **ICLR 2027 제출본, 심사 중**; arXiv 2609.25503 (2026-09). https://openreview.net/forum?id=Z5BlQmCnVi | Energy-Weighted Spike Budgeting: 층별 연산 비용을 가중해 발화율을 규제하고 포화 활성에 벌점 | 닮음: 층 비용 가중 스파이크 벌점(Suetake 와 같은 부류). 다름: UAV 추적, 균등 아닌 층 가중 | 완전 스파이킹 추적기, VisDrone2018 등 4개 벤치마크 | 초록: 추정 전력 baseline 대비 −24.1%; VisDrone2018 SR 70.0%(SpikeTrack +9.7%p), 추정 전력 −45.7% | 미확인 | "채택 시 공개" | △ (분류 아님) |
+| N7 | **QuantLIF** (ICLR 2027 제출본), "Bridging Efficiency–Accuracy Gap in SNNs via Operation-Constrained Quantization and Low-Spike Suppression". https://openreview.net/forum?id=cmcGeC1HmI | 다단계(2의 거듭제곱 합) 스파이크 뉴런. low-spike suppression 은 기여가 낮은 스파이크를 학습 중 확률적으로 거르고 추론에서 결정적으로 제거 | 닮음: "약한 스파이크를 먼저 없앤다"는 발상. 다름: 규제항이 아니라 필터, 뉴런 모델 변경 | 정적·뉴로모픽 벤치마크 (초록에 이름 없음) | 초록에 수치 없음 | 미확인 | 미확인 | △ |
+| N8 | **RATI-LIF** (ICLR 2027 제출본), "Runtime-Adaptive Temporal Integration Improves Sparsity and Accuracy in SNNs". https://openreview.net/forum?id=43kWXrmsvz | 추론 시 시간 상수를 뉴런별로 적응하는 LIF | 뉴런 모델 변경(ILIF 와 같은 부류) | 미확인 | 초록: 발화율·추정 에너지 크게 감소, 정확도 향상. 수치 미확인 | 미확인 | 미확인 | △ |
+
+**1-B. 규제 선례 (ANN, 경쟁·분극 축)**
+
+| # | 논문 | 방법 | 우리와의 관계 |
+|---|---|---|---|
+| P1 | **Polarization regularizer.** Zhuang, Zhang, Huang, Zeng, Shuang, Li, "Neuron-level Structured Pruning using Polarization Regularizer", NeurIPS 2020. https://papers.nips.cc/paper/2020/hash/703957b6dd9e3a7980e040bee50ded65-Abstract.html , 코드 https://github.com/polarizationpruning/PolarizationPruning | BN 스케일 γ 에 거는 규제. 초록: "L1 은 모든 스케일 인자를 0 으로 밀어 뉴런을 구분하지 못한다", 제안은 "일부는 0 으로, 나머지는 a>0 으로" 분극시킴(정리 3.2). CIFAR·ImageNet 에서 L1 보다 좋다고 보고(수치 표는 이번에 안 읽음) | **"균등 벌점은 구분이 없다, 약한 쪽만 죽이고 강한 쪽은 지킨다"는 우리 논리의 ANN 선례.** 대상이 활동이 아니라 γ, 채널 가지치기 후 파인튜닝 구조. 경쟁/분극 가중이 새롭다는 일반 주장의 반례 (SASL, FBS 에 이은 세 번째) |
+| P2 | DeepHoyer, Yang, Wen, Li, ICLR 2020. https://arxiv.org/abs/1908.09979 | 스케일 불변 Hoyer-Square 규제로 가중치 희소화 | Kurtz(ICML 2020, 활성에 Hoyer)의 원 규제. 스케일 불변이 "상대적 크기로 벌점"이라는 점에서 우리 1−c/max 가중과 같은 계열 |
+| P3 | FGKDSNN (ICLR 2027 제출본), https://openreview.net/forum?id=9S2vkFszgH | KD 논문. 초록에서 "student 의 발화 활동은 특징 채널에 **고도로 집중**돼 있다"고 관찰 | 규제 논문이 아니다. 발화가 채널에 쏠린다는 관찰이 inter(채널 간 경쟁) 설계의 근거로 인용 가능. 심사 중 제출본이므로 인용 보류 |
+
+**1-C. 같은 모델이지만 규제가 아닌 것, 또는 실측 관련**
+
+| # | 논문 | 내용 | 비고 |
+|---|---|---|---|
+| M1 | Chen, Yuan, Tan 외, "Resource Constrained Model Compression via Minimax Optimization for SNNs", ACM MM 2023, arXiv 2308.04672, doi 10.1145/3581783.3611838. https://arxiv.org/abs/2308.04672 (**앞선 절에서 "표 미확인"이던 것을 이번에 읽음**) | 가중치 프루닝(비구조). 자원 예산 R_budget 을 두고 **쌍대 변수를 경사 상승**으로 갱신(z ← max(0, z+η(R−R_budget))). 모델: R19, VGG16, SEW-R18, VGGSNN. 표는 가중치 희소율이지 스파이크 아님 | Table 2: R19 C10 94.85 → 94.84 / 94.36 / 93.81 @희소율 80.05 / 95.07 / 97.07%. R19 C100 74.71 → 75.05 / 72.67 / 70.80 @79.99 / 95.19 / 97.31%. Table 3: VGGSNN DVS 82.80 → 82.40 / 81.90 / 81.20 / 80.10 @85.18 / 90.14 / 93.14 / 95.16%. T·n 미확인. **쓸모: 우리와 같은 R19·VGGSNN 에서 가중치 희소율 표, 그리고 SNN 에서 자원 제약을 쌍대 변수로 푸는 λ 자동화 선례(가중치 쪽).** 스파이크 감소 비교에는 못 씀 |
+| M2 | Wu 외, "Optimizing event-driven SNN with regularization and cutoff" (RCS), Front. Neurosci. 19, 2025, doi 10.3389/fnins.2025.1522788. https://www.frontiersin.org/journals/neuroscience/articles/10.3389/fnins.2025.1522788/full | 코사인 유사도 규제 + 조기 종료(T 축). 스파이크·SOPs·FR 보고 없음 | Table 2 VGGSNN CIFAR10-DVS T=10 TET: 81.10 → 83.10 (+RCS), T_avg 3.16 → 3.05. 앞 절 "읽었으나 뺀 것"을 표까지 읽어 확정. n 없음 |
+| M3 | Yao 외, SDT-V3 = "Scaling Spike-driven Transformer with Efficient Spike Firing Approximation Training", **IEEE TPAMI 2025** (GitHub 저장소 표기 + OpenAlex 로 확인). arXiv 2411.16061. https://github.com/BICLab/Spike-Driven-Transformer-V3 | 스파이크 규제 없음. ImageNet-1k 78.5 / 79.8 / 84.0 / 86.2% @10M / 19M / 83M / 173M(마지막은 384 입력) | 앞 절의 "게재 미확인" 해소. 19M 5.9 mJ, 83M 19.1 mJ 는 논문의 이론 전력. **우리 171M 과 논문 173M 의 표기 차이는 확인 필요.** SDT-V3 에 스파이크 규제를 건 논문은 찾지 못함 |
+| M4 | **STRIDE** (ICLR 2027 제출본), https://openreview.net/forum?id=OBDZfSiQXp | 초록: "알고리즘 연구는 SOP 기반 이론 에너지, 하드웨어 연구는 실제 과제 정확도 검증이 부족해 둘 사이 증거가 단편적"이라 지적. 28nm SNN 가속기에서 4bit 가중치×1bit 스파이크 실행 | 실측 프록시 비판 인용 후보(심사 중) |
+| M5 | Aliyev, Lopez, Adegbija, "Surrogates, Spikes, and Sparsity: ... SNN Hyperparameters on Hardware", arXiv 2603.24891 (2026-03). https://arxiv.org/abs/2603.24891 | 초록: "정확도 지표는 하드웨어 효율의 나쁜 예측자", 대리 기울기 선택이 지연을 최대 12.2%(DVS128-Gesture), 뉴런 모델이 최대 28% 바꿈. DVS-CIFAR10 포함 | SynOps 프록시 한계 인용 후보. 게재 미확인 |
+| M6 | Yoo, Garg, Chakraborty, "When Spike Sparsity Does Not Translate to Deployed Cost: VS-WNO on Jetson Orin Nano", arXiv 2604.17040 (ICONS 2026 제출) | 스파이킹 연산자: 알고리즘 희소성(발화율 54%→18%) 이 있어도 Jetson 에서 지연 59.6 vs 53.2 ms, 동적 에너지 228.0 vs 180.7 mJ 로 dense 보다 나쁨 | 신경 연산자(PDE)라 모델이 다르다. 상용 GPU 스택에서 희소성이 비용이 되지 않는다는 사례 |
+
+### 2. 기존 항목 갱신 (새 수치)
+
+- **UPR (ICLR 2024 Spotlight) 원문 Table 1·A1 을 읽었다** (https://proceedings.iclr.cc/paper_files/paper/2024/file/dd3c889922df2112a5b1769e3c19e28e-Paper-Conference.pdf). 앞 절은 SpikeNM·UniSparse 표의 2차 인용이었다. 벌점은 마스크에 거는 L1(SOPs 상수 가중, 식 10~11)이고 시드 수는 없다.
+  - CIFAR-10, 6Conv+2FC, T=8: dense 92.84 @776.12M SOPs → 92.63 (−0.21) @38.32M (20.25배) / 92.05 @16.47M / 91.47 @11.98M / 90.65 (−2.19) @8.50M.
+  - DVS-CIFAR10, VGGSNN, T=10: dense 82.4 @647.30M → 81.9 (−0.5) @47.81M (13.54배; 연결 6.80%, 뉴런 42.73% 잔존) / 81.0 @31.86M / 79.0 @10.02M / 78.3 @6.75M.
+  - ImageNet, SEW-R18, T=4: dense 63.18 @1337.87M → 61.89 (−1.29) @311.70M (4.29배) / 60.00 @177.99M / 58.99 @116.88M.
+  - **CIFAR-100, SEW-R18, T=10 (Table A1): dense 74.16 @250.91M → 72.34 (−1.82) @27.16M (9.24배) / 71.99 / 71.43 / 71.31 / 70.45 / 69.41 (−4.75) @6.79M.** 이전 비교 목록에 없던 C100 값.
+- **Activity Pruning 의 L1 규제(AR) 대조군을 ImageNet-100·DVS 까지 읽었다** (NeurIPS 2025 PDF, https://www.proceedings.com/content/085/085713-5700open.pdf , Table 1). 앞 절은 CIFAR-10 AR 만 적었다.
+  - ImageNet-100 SEW-R18 T=4: Vanilla 83.44 (FR 0.138, SOPs 1276.42M) / AR λs=0.01 82.94 (0.083, 840.90M) / AR λs=0.05 82.26 (0.043, 469.00M) / AT-LIF 82.40 (0.038, 463.65M) / 81.12 (0.025, 328.34M).
+  - DVS VGGSNN T=10: Vanilla 82.70 (0.080, 1066.40M) / AR λs=0.005 81.30 (0.055, 673.06M) / AT-LIF 82.20 (0.043, 626.57M) / 82.10 (0.039, 587.68M).
+  - 해석: FR 이 비슷하거나 AT-LIF 쪽이 더 낮은 행끼리 비교하면 AT-LIF 가 plain L1 보다 ImageNet-100 에서 +0.14%p (82.40 @0.038 대 82.26 @0.043), R20 C10 에서 +0.74%p (92.05 @0.053 대 91.31 @0.060), DVS 에서 +0.90%p (82.20 @0.043 대 81.30 @0.055). **FR 을 −31~−81% 줄인 대표 행에서 plain L1 은 세 설정 모두 −1.2~−1.6%p 를 잃는다**(ImageNet-100 −1.18 @FR −68.8%, R20 C10 −1.58 @−74.6%, DVS −1.40 @−31.3%). 약한 λ 행은 손실이 더 작다(ImageNet-100 λs=0.01: −0.50 @−39.9%). 우리 plain L2 대조군(R19 C10 T=4 −0.03%p @−20%)과 같은 방향의 근거이면서, 대조군이 어디까지 약한지(−1%p 이상 손실)의 외부 기준이다. 이 논문의 Theorem 1(스파이크가 전부 0 인 점은 안장점)은 우리 vmem 항이 답해야 하는 지점이다.
+  - PDF 첫 쪽 저자 순서는 **Xinyu Shi, Tong Bu, Zhaofei Yu** 다(앞 절·bib 은 Bu, Shi, Yu). UniSparse 본문은 "적응 임계값으로 스파이크를 줄인 최근 연구 (Bu et al., 2026)" 를 인용하는데 이 논문을 가리키는 것으로 보이나 제목은 확인하지 못했다. refs.bib 키·저자 순서 확인 필요.
+- **UniSparse 본문(PDF 를 pdftotext 로 읽음).** 서론이 기존 스파이크 희소화를 "Neil et al. 2016, Deng et al. 2021 의 스파이크 규제"로 규정하고 "모든 스파이크를 무차별 억제해 과제 목표와 충돌, 성능을 해친다"고 비판한다(앞 절의 인용과 일치). 우리 인용 위치: 이 한 문장이 "규제는 무차별"의 출처다. Table 1 에서 ResNet-19 T=4 행 94.71±0.11 → 94.07 → 92.48 → 91.56 @39.47 / 18.58 / 8.18 / 6.11M SOPs 는 기존 값과 같다. dense 행은 표에 없다.
+- **Datta, Liu, Diffenderfer, Kailkhura, Beerel, arXiv 2312.06900** (2023-12, "Under review", 게재 미확인; 앞 절은 "변환 L1"이라 표에서 제외). ANN→SNN 변환 + 비트 단위 L1 (식 9 Σ a_t^{i,l}, STE 류 대리 기울기). 본문: λ 0 → 5e-8 에서 활동이 2.5~4.1배 감소하나 T≤3 에서 정확도 하락. **ResNet18 C10 λ=1e-8: λ=0 대비 정확도 0.2% 이내, 활동 0.53 → 0.22 (2.4배).** ResNet34 ImageNet λ=5e-10: 정확도 −0.4%, 연산 에너지 2배 감소. 수치는 본문 서술이고 n 없음. 직접 학습이 아니고 plain L1 이다.
+- **Suetake (arXiv 2302.01500)** Remark 3.5 와 §4: p=1 이 p=2(제곱) 보다 에너지-정확도 곡선이 낫다고 보고하고, p≠1 은 "스파이크가 안 나간 뉴런에 흐르는 역신호"를 바꾼다고 서술. 이유는 미해결로 둠("mechanism ... unclear"). 우리 vmem 항(침묵 뉴런에 막전위 벌점)과 같은 현상을 다른 방식으로 건드린다. 우리 norm 은 제곱이 아닌 L2 라서 BPSR(제곱)과도 Suetake(p=1)와도 다르다.
+- **BPSR** 은 이번에 PMC 본문에서 서지를 재확인: Yan, Chu, Jin, Huan, Zou, Zheng (Fudan), Front. Neurosci. 16:760298, 2022. Table 5 의 CIFAR-10 11층 ResNet: T=12 λ_s=1e-9 → 136.1K spikes @90.74%, T=8 λ_s=1e-8 → 89.6K @90.24%. 앞 절 #9 와 일치하며 시드 수는 없다.
+
+### 3. 모델별 직접 비교 가능성
+
+| 우리 모델 | 같은 모델에서 효율 수치를 낸 외부 논문 | 상태 |
+|---|---|---|
+| R19 C10 T=4 | **SRSC** (N1, ±0.5% 내 FR −49% SOPs −24%, 초록만), UniSparse (기존), MI-TRQR PLIF-Net (기존), Minimax 가중치 희소율 표 (M1, 스파이크 아님) | SRSC 는 수치 접근 불가. R19 C10 T=4 에서 스파이크 규제의 정확도 보존 구간을 표로 낸 논문은 여전히 UniSparse(밀집 행 없음)뿐 |
+| R19 C100 T=4 | MI-TRQR(기존), SRSC(C100 검증한다고만 서술), Minimax 가중치 표 (M1), UPR SEW-R18 T=10 (갱신) | 스파이크 규제 + 효율 표는 MI-TRQR 외 없음 |
+| VGGSNN DVS-CIFAR10 | UPR 원문 (T=10, −0.5%p @13.54배), Activity Pruning + AR 대조군 (T=10, 갱신), UniSparse (기존), **SRSC** (±0.75%, FR −44%, SOPs −16%, 초록만), MI-TRQR VGG (T=4, 기존), Minimax 가중치 표, RCS (T 축) | 가장 비교 대상이 많은 모델. 단 문헌은 대부분 T=10, 우리는 T=4 |
+| QKFormer C10/C100 T=4 | 스파이크 규제 논문 **0편.** Uncert, TP-Spikformer (기존, 토큰 쪽) | arXiv 2604.15769 가 QKFormer-4-256 을 C10 94.8±0.2 / 1.6M spikes, C100 78.9±0.3 / 1.9M 로 적었으나 이론 논문이고 측정 프로토콜·단위가 불명(우리 4-384 @951K 보다 작은 모델이 더 많은 스파이크)이라 **인용 금지 수준** |
+| SDT-V3 ImageNet | 스파이크 규제를 건 논문 **0편.** SDT-V3 본체는 TPAMI 2025 로 확정(M3). ImageNet 효율 수치: UPR SEW-R18 T=4 (갱신), UniSparse Spikformer (기존), Activity Pruning SEW-R18 (기존) | 모델이 달라 절대 비교 불가 |
+
+SOPs·FR 환산: 위 논문의 FR = 전 뉴런·전 시간의 평균 스파이크(Activity Pruning 정의), SOPs = Σ(스파이크 수 × 팬아웃) (UPR/UniSparse 정의). 우리 모델에서 FR 과 SOPs 를 같이 계산해 두면 이 표에 놓을 수 있다.
+
+### 4. 우리 방법과 가장 비슷한 것 (상위 3)
+
+1. **SRSC (N1).** 손실 항 하나, 뉴런·구조 불변, 같은 모델, 정확도 유지 주장, 정확도 기반 일정. 차이(초록 기준): 벌점이 균등이라 경쟁 가중이 없고, 천장이 수동이며, 막전위 항이 없다. 단 PDF 를 못 읽어 "경쟁 가중이 없다"는 판단은 초록·TLDR 에만 근거한다.
+2. **Suetake, TMLR 2024 (기존).** 에너지에 비례하게 설계한 단일 벌점, 구조 불변, 정확도 유지(ResNet18 C10 T=1 −42% @+0.08%p, n=3). 차이: fan-out 고정 가중, 수동 λ 격자, T=1. 본문 §4 의 p=1 대 p=2 관찰이 우리 norm 선택을 설명할 때 쓸 수 있다.
+3. **UniSparse, ICML 2026 (기존).** 단일 λ, 에너지(SOPs) 모델에서 유도한 벌점, 채널 단위(BN affine)로 스파이크 억제. 차이: 손실 항이 아니라 파라미터 직접 갱신, 가중치 프루닝과 결합, 밀집 baseline 행 없음.
+
+경쟁/분극 축만 따로 보면: **Polarization regularizer (P1, ANN)** 가 개념적으로 가장 가깝고, SNN 에서는 **PopFR-CV (N2)** 가 "집단 내 발화율 불균등"을 목적함수로 직접 쓴다(단 분석 논문). λ 자동 조정 축: SRSC 의 검증 정확도 기반 일정, Meem 의 발화율 오차 피드백(앞 절 #19), Minimax 의 쌍대 상승(M1, 가중치).
+
+### 5. 우리 주장에 위험한 것
+
+1. **SRSC (N1).** 같은 모델(R19 C10, VGGSNN DVS), 같은 주장 형태("구조 변경 없이 정확도 유지, FR −49%"), 일정이 침묵 붕괴를 피한다. 대비해야 할 반론은 **"plain 벌점 + 정확도 기반 일정"이 우리 경쟁 항과 같은 결과를 내지 않느냐**다. 경쟁 항 자체의 기여를 보이려면 plain L2 에도 같은 일정을 준 대조가 필요하다(제안만, 실행하지 않음). ICLR 2027 제출본은 OpenReview 에서 공개 열람 가능하므로 CVPR 심사자가 볼 수 있다. 심사 중이라 선행 연구로 인용할 수는 없고, 동시기 연구로 다룰지는 사용자 판단 사항이다. 위험도는 "표를 못 읽어서" 과소평가일 수도 과대평가일 수도 있다.
+2. **PopFR-CV (N2).** 규제가 의도한 통계와 반대 방향의 결과를 낳고 침묵 좌표가 +30%p 늘 수 있다는 SDT 분석이다. 우리가 "경쟁 항이 채널을 죽인다"고 말할 때 **목적함수가 아니라 측정된 결과로** 주장해야 한다는 압력이다. 또 SDT 에서는 활동 목적함수를 걸어도 평균 발화 감소가 "modest" 라고 한다. SDT-V3 파인튜닝에서 큰 감소를 기대하기 어렵다는 외부 근거로 읽힐 수 있다(초록만 근거).
+3. **Activity Pruning (기존).** 이번 갱신 값(2절)으로 위험의 성격이 바뀐다. plain L1 은 R20 / ImageNet-100 / DVS 에서 −1.2~−1.6%p 를 잃으므로 우리 plain 대조군 해석은 지지되고, 반대로 이들의 AT-LIF 는 ImageNet-100 에서 plain L1 과 0.14%p 차이뿐이다. "무차별 규제는 반드시 손실을 낸다"는 일반화는 ImageNet-100 에서는 약하다. 우리 주장을 "같은 FR 에서 plain 대비 얼마나 낫다"로 쓰면 이 논문의 표와 같은 축에 놓인다.
+4. **P1 Polarization regularizer.** "약한 쪽만 죽이고 강한 쪽은 지키는 분극 규제는 새롭다"는 문장의 반례. 새로움은 "활동(스파이크) 자체에 걸린 경쟁 가중이 SNN 에서 채널을 죽인다"로 한정해야 한다(앞 절 SASL·FBS 권고와 같은 방향).
+5. **실측 프록시 비판(M4~M6, Sparsity Ceiling).** 스파이크·SOPs 감소가 배포 비용 감소가 아니라는 근거가 늘고 있다. 우리 효율 주장은 spikes 와 SOPs 까지이고 실측은 없다는 한계 문장이 필요하다.
+
+### 6. 못 찾은 것·미확인 (본문 인용 금지)
+
+- **SRSC·PopFR-CV·SBMVTrack·QuantLIF·RATI-LIF·FGKDSNN·STRIDE**: ICLR 2027 제출본. 초록·TLDR 만 OpenReview 검색 API 로 확인했고 PDF·표·코드는 접근하지 못했다(브라우저 검증). 익명 제출이라 저자 미확인. 철회·수정될 수 있다. **본문 수치 인용 금지.**
+- Krausse ICONS 2025, Fontanini NCE 2024 (PDF 403), Kang 외 "Spike-Count Reduction Techniques" (NPL 2025, 페이월), "Sparser spiking activity can be better: Feature Refine-and-Mask SNN" (Neural Networks 2023, 페이월), Fleury "Masked Spikformer" (2025, 도서관 레코드만 확인, arXiv·본문 없음), "Low Latency and Sparse Computing SNNs With Self-Driven Adaptive Threshold Plasticity" (TNNLS 2024), "Directly training temporal SNN with sparse surrogate gradient" (Neural Networks 2024): 존재와 서지만 확인, 수치 미확인.
+- Louis 외 N3 의 게재처, Table III 절대 스파이크 단위·δAcc 정의. Datta 2312.06900 의 게재 여부. Minimax(M1) 의 T.
+- **제목 전수 스캔을 하지 않은 곳**: ICLR 2024 (OpenReview 검색으로 일부만), ECCV 2024, AAAI 2024~2026, IJCAI, ACM MM, TNNLS·TPAMI·Nat. Commun. 등 저널 (OpenAlex 제목 필터 566건을 훑었으나 학회·저널 누락이 많다).
+- QKFormer 에 스파이크 규제를 건 논문, SDT-V3 에 건 논문, R19 C100 T=4 에서 스파이크 규제 + 효율 표를 낸 논문(MI-TRQR 제외): **찾지 못했다.** 못 찾은 것이지 없다는 뜻이 아니다.
+- 읽었으나 위협이 낮아 뺀 것: ILIF·RPLIF·AHSAR(arXiv 2512.05015, 층별 발화율을 검증 성능·에너지로 조절하는 임계값 제어기, 학습 가속 목적, ResNet-18 C10 T=8/10)·SPARTA(arXiv 2508.01646, 측면 억제 토큰 선택, DVS T=16)·Inherent Redundancy(ICCV 2023, 제스처·보행 DVS)·Masked Spiking Transformer(ICCV 2023, 변환)·Hoyer(앞 절 #10 에 있음)·TDSNNs(AAAI 2026, 위상 구조 손실, 효율 목적 아님)·Energy-Aware Spike Budgeting(앞 절 #19)·ShiftLIF(arXiv 2605.01866, 다단계 뉴런, 보조 L1 항).
+
+
+## 2026-10-14 inter 타당성 근거 문헌
+
+의뢰 (사용자 10-14): "inter 가 타당한 이유도 분석해줘." 이 절은 그중 **문헌·생물학 근거**만 맡는다. 우리 측정과 겹치는 부분은 6절에 한 표로만 대조했고, 통계 분석은 건드리지 않았다. 읽기 전용 조사이며 코드·큐·서버·커밋은 건드리지 않았다.
+
+**대상 방법.** ours_inter_ch: `loss = CE + λ·Σ_l ‖S_l ⊙ w_l‖₂`, `S` = 이미지별 T 합 스파이크, `w = 1 − c/max_c c`, `c` = 채널 공간합(같은 층 채널끼리 경쟁). 역전파 `w²/R`, λ = ρ·L_task/R. 따라서 문헌에서 찾는 것은 (가) 채널 활동량이 채널 중요도의 대리 지표인가, (나) 약한 쪽을 더 세게 벌하는 상대(비균등) 가중이 균등보다 나은가, (다) 채널 단위 희소성이 하드웨어 비용과 이어지는가, (라) 생물학적 대응이 있는가 네 가지다.
+
+**읽은 정도 표기.** [본문] = PDF/HTML 을 내려받아 본문에서 직접 확인. [초록] = 초록·서지 페이지만. [2차] = 검색 요약이나 다른 논문의 인용으로만 확인. [미확인] = 본문 인용 금지. 외부 수치는 해당 논문의 표·설정을 같이 적었고, **n 은 거의 모든 외부 논문이 기재하지 않는다 (기재 안 된 곳은 "n 미기재").** 이번 세션에서 내려받은 PDF 약 30편, WebSearch 약 20회, WebFetch 약 25회. 전수 조사가 아니다.
+
+### 0. 결론 먼저
+
+| inter 의 전제 | 지지 문헌 (직접성) | 반대·제한 문헌 | 판정 |
+|---|---|---|---|
+| (가) 채널 활동이 낮으면 덜 중요하다 | APoZ 류(ANN, 약), Molchanov 2017 (층 안 순위 상관 0.56~0.65, 단 AlexNet-ImageNet 0.09), **SCA (SNN, 채널 막전위 활동 낮은 채널 제거 후 정확도 유지)**, Spik4lite (채널 발화율 기반 제거) | **Inherent Redundancy (ICCV 2023): 발화가 많은 채널이 배경 잡음 채널**, Ye 2018·FPGM (노름 작으면 덜 중요하다는 가정은 조건부) | **부분 지지.** 방향이 반대로 나오는 SNN 사례가 있다 |
+| (나) 상대(순위) 가중이 균등보다 낫다 | **SASL (ANN, 순위별 벌점 0×~4×, 최강 필터 무벌점)**, Polarization (NeurIPS 2020), Trimmed ℓ1 (ICML 2019), DeepHoyer, reweighted ℓ1, FBS (채널 k-WTA) | SNN 활동 규제에서 이 가중을 직접 시험한 선행 연구는 **찾지 못함.** 우리 측정에서도 BPSR 대비 같은 스파이크 정확도 +0.04 ±0.04 (p=0.29) | **ANN 선례 강함, SNN 선례 없음, 우리 정확도 우위는 판정 불가** |
+| (다) 채널 단위 희소성이 비용으로 이어진다 | **Speck: 메모리·매핑이 채널 수로 결정(sinabs 문서)**, Spik4lite (채널 물리 제거 → Jetson 실측 에너지), Wen 2016·Network Slimming (ANN, CPU/GPU 실속도), Loihi 표 (비활성 뉴런 갱신 52 pJ) | UPR (ICLR 2024): 구조적 뉴런 프루닝은 뉴로모픽의 희소 연산을 못 쓴다고 주장, Spike-Thrift (같은 정확도에서 구조적 압축률이 한 자릿수 낮음), Loihi 추정 모델에서 에너지의 86%가 시냅스 연산 | **지지되지만 단서가 붙는다.** 죽은 채널은 동적 비용이 원래 0 이므로 이득은 메모리·매핑·밀집 연산에서 나온다 |
+| (라) 생물학적 대응이 있다 | 정규화·승자독식(Carandini & Heeger 2012), 후각 사구체 간 측면 억제(Olsen 2010), 컨볼루션 SNN 의 intra/inter-map competition (Kheradpisheh 2018) | V1 에서 측면 억제 없이 설명 가능(Priebe & Ferster 2008), 정규화에 GABA 억제 불필요(같은 리뷰), 개별 뉴런 set-point 항상성(Torrado Pacheco 2021) | **유추 수준.** "특징 채널 공간합끼리 겨루는 규제"의 직접 생물 근거는 못 찾음 |
+
+**한 줄 요약.** inter 와 같은 단위(채널 공간합)·같은 방향(약한 채널이 더 벌받고 최강 채널은 무벌점)의 규제를 **SNN 스파이크 손실로** 쓴 선행 연구는 찾지 못했다. 구성 요소별 선례는 ANN 에 있다(FBS = 채널 공간 풀링값으로 채널 k-WTA, SASL = 순위 기반 비균등 벌점, SCA = SNN 채널 활동 기반 제거). 타당성의 가장 단단한 부분은 (다) 하드웨어 쪽 구조적 이득이고, 가장 약한 부분은 (가) "많이 쏘는 채널이 중요하다"는 전제의 방향이다.
+
+### 1. 생물학
+
+| 문헌 | 서지·URL | 확인한 문장·수치 | 대응 | 한계 |
+|---|---|---|---|---|
+| **Carandini & Heeger 2012** [본문] | Normalization as a canonical neural computation. Nat Rev Neurosci 13(1):51–62 (2012; 온라인 2011-11-23), doi 10.1038/nrn3136. https://pmc.ncbi.nlm.nih.gov/articles/PMC3273486/ | 초록: "the responses of neurons are divided by a common factor that typically includes the summed activity of a pool of neurons". V1: 높은 대비 수평 격자에 낮은 대비 수직 격자를 더하면 집단 반응이 "mostly reflect the high-contrast grating" (정규화가 승자독식을 만든다). Box 2 "Max-pooling (winner-take-all)": "selecting the neuronal subpopulation (or psychophysical channel) with the largest responses and suppressing the rest". Box 2 "Redundancy reduction": 정규화가 V1 반응 간 통계적 독립성을 높여 표현을 효율적으로 만든다 | 큰 반응이 작은 반응을 누르고 가장 센 쪽만 남는 구조가 inter 의 `w = 1 − c/max` (최강 채널 무벌점) 와 같은 방향 | 추론 시 반응을 나누는 순방향 계산이지 학습 손실이 아니다. pool 은 같은 위치·다른 특징 뉴런이며 채널 공간합이 아니다. 같은 글이 "V1 의 정규화에서 GABA 억제는 거의 역할이 없다"고 쓴다 (5절) |
+| **Olsen, Bhandawat, Wilson 2010** [초록] | Divisive normalization in olfactory population codes. Neuron 66(2):287–299, doi 10.1016/j.neuron.2010.04.009. https://pubmed.ncbi.nlm.nih.gov/20435004/ | "Lateral inhibition increases the level of feedforward input needed to drive PNs to saturation, and this normalization scales with the total activity of the olfactory receptor neuron (ORN) population." "the saturating transformation intrinsic to each processing channel boosts weak signals, while normalization helps equalize responses to different stimuli" | **가장 가까운 '채널 단위' 생물 사례.** 초파리 후각의 처리 채널(사구체 = 수용체형 하나) 사이에서 측면 억제가 일어난다 | 억제 세기가 채널 최대치가 아니라 **전체 ORN 활동**에 비례한다. 같은 초록이 약한 신호를 키우고 반응을 고르게 만든다고 쓴다 — "약한 채널을 죽인다"와 반대 요소 |
+| **Lennie 2003** [초록] | The cost of cortical computation. Curr Biol 13(6):493–497, doi 10.1016/s0960-9822(03)00135-0, PMID 12646132. https://pubmed.ncbi.nlm.nih.gov/12646132/ | "The cost of a single spike is high, and this severely limits, possibly to fewer than 1%, the number of neurons that can be substantially active concurrently." 높은 비용이 "representational codes that rely on very few active neurons" 를 요구한다 (인간 피질 추정) | 스파이크를 줄이려는 목적 자체의 생물학 동기 | 채널 단위 경쟁의 근거는 아니다 |
+| **Olshausen & Field 1996; Vinje & Gallant 2000** [초록] | Nature 381(6583):607–609, doi 10.1038/381607a0 (PMID 8637596). Science 287(5456):1273–1276, doi 10.1126/science.287.5456.1273 (PMID 10678835). | O&F: 희소성을 최대화하는 코드가 V1 단순세포 수용야를 낳고 출력 간 통계적 독립성이 높다. V&G: 비고전 수용야 자극이 "increases the sparseness of the population response distribution, and strongly decorrelates the responses of neuron pairs" (흥분·억제 조절 모두) | 억제성 조절이 집단 희소성과 비중복을 만든다 | 뉴런 쌍·수용야 수준, 채널 아님 |
+| **Barth & Poulet 2012** [초록, 2차 요약] | Experimental evidence for sparse firing in the neocortex. Trends Neurosci 35(6):345–355. https://www.mdc-berlin.de/research/publications/experimental-evidence-sparse-firing-neocortex | 요약: 반응 특성이 뉴런마다 크게 달라 소수 뉴런이 대부분의 스파이크를 내고, 표층 일부 세포는 아예 발화하지 않는다 (원문 문장 아님) | 활동이 소수에 몰린 치우친 분포가 피질의 정상 상태라는 근거 (우리 지니 상승과 같은 방향) | 요약 문장이라 인용하려면 본문 확인 필요 |
+| **Rozell 외 2008 (LCA); Davies 외 2018 (Loihi S-LCA)** [LCA 2차, Loihi 본문] | Rozell, Johnson, Baraniuk, Olshausen, Neural Comput 20:2526–2563, doi 10.1162/neco.2008.03-07-486 (검색 확인, PDF 미열람). Davies 외, Loihi: A Neuromorphic Manycore Processor with On-Chip Learning, IEEE Micro, Jan/Feb 2018. https://gwern.net/doc/ai/scaling/hardware/2018-davies.pdf | Loihi 논문: 스파이킹 뉴런들이 서로 경쟁해 희소 표현을 만든다("neuron that has the largest external input ... more likely to spike at the earliest time, causing immediate inhibition of the other neurons"). 전신 칩 표 3: 미지수 32,256 / 비영 약 420 문제에서 Atom 대비 에너지 48.74배, 지연 118.18배, EDP 5760배, 미지수 400 / 비영 약 10 에서는 EDP 0.7배 | 경쟁으로 희소 코드를 만드는 계산이 스파이크 하드웨어에서 효율적이라는 시연 | 추론 시 최적화 알고리즘이고 학습 규제가 아니다. 억제가 특징 사전의 겹침으로 정해진다 |
+| **Kheradpisheh 외 2018** [본문] | STDP-based spiking deep convolutional neural networks for object recognition. Neural Networks, doi 10.1016/j.neunet.2017.12.005 (arXiv 1611.01421v3 머리말 기준). https://arxiv.org/abs/1611.01421 | "global intra-map competition": 같은 맵(채널) 안 위치끼리 먼저 발화한 하나만 STDP. "local inter-map competition ... This competition is crucial to encourage neurons of different maps to learn different features." 학습 경쟁이 맵이 비슷한 특징을 배우는 것을 막는다 | **우리 세 팔의 이름(intra / inter)과 같은 구분을 SNN 학습에 쓴 선행.** 채널 간 경쟁의 목적이 '맵마다 다른 특징' | 비지도 STDP, 경쟁 단위는 근방 위치의 다른 맵. 스파이크 수 감소가 목적이 아님. 정확도 수치는 이번에 안 읽음 |
+| **SpykeTorch (Mozafari 외)** [본문] | Frontiers in Neuroscience 수록 예정으로 arXiv 머리말 표기. https://arxiv.org/abs/1903.02440 | "sf.pointwise_inhibition employs competition among feature maps at each location" (한 위치에서 가장 두드러진 특징 하나만 발화), "sf.feature_inhibition ... complete inhibition of the selected feature maps" | 채널 간 경쟁이 SNN 라이브러리의 기본 연산 | 구현 서술일 뿐 효과 수치 없음 |
+
+**1절 소결.** 생물학에서 확인되는 것은 (i) 큰 반응이 작은 반응을 눌러 최강 쪽만 남기는 집단 수준 정규화·승자독식, (ii) 후각계의 채널(사구체) 간 측면 억제, (iii) 대사 비용이 결정하는 극히 희소한 발화다. **"특징 채널의 공간합을 서로 비교해 약한 채널을 학습으로 죽인다"를 직접 지지하는 생물 문헌은 찾지 못했다.** 논문에는 "영감" 수준의 유추로만 쓰고 근거로 쓰지 않는 편이 안전하다.
+
+### 2. ANN 선행 (경쟁·구조적 희소·채널 중요도)
+
+| 문헌 | 서지·URL | 확인한 문장·수치 (표·설정) | inter 와 겹치는 점 | 다른 점·한계 |
+|---|---|---|---|---|
+| **LRN, AlexNet** [본문] | Krizhevsky, Sutskever, Hinton, NeurIPS 2012. https://papers.nips.cc/paper_files/paper/2012/file/c399862d3b9d6b76c8436e924a68c45b-Paper.pdf | §3.3: "implements a form of lateral inhibition inspired by the type found in real neurons, creating competition for big activities amongst neuron outputs computed using different kernels". top-1/top-5 오류 −1.4%/−1.2% (ImageNet), CIFAR-10 4층 CNN 13% → 11% | 채널 간 큰 활동 경쟁을 측면 억제로 명시한 가장 유명한 ANN 선례 | 같은 위치의 "인접(순서 임의) 커널 맵" n 개로 나누는 순방향 정규화. 학습 손실이 아니고 희소성이 목적도 아님 |
+| **Compete to Compute (LWTA)** [본문] | Srivastava, Masci, Kazerounian, Gomez, Schmidhuber, NIPS 2013. https://papers.nips.cc/paper_files/paper/2013/file/8f1d43620bc6bb580df6e80b0dc05c48-Paper.pdf | 초록: "Local competition among neighboring neurons is common in biological neural networks"; 경쟁하는 선형 유닛이 비경쟁 비선형 유닛보다 좋은 경향, 파국적 망각 회피. §2: 피질의 recurrent on-center off-surround 구조, Grossberg: faster-than-linear 신호함수가 WTA 동역학을 만들고 slower-than-linear 는 입력을 균일화 | 생물학 측면 억제를 ANN 의 블록 내 승자독식으로 옮긴 직접 선례 | 블록 내 유닛 간 forward 경쟁, 희소 스파이크 비용과 무관 |
+| **Winner-Take-All Autoencoders** [초록·본문 일부] | Makhzani & Frey, arXiv 1409.2752 (v2, 2015-06; 게재처는 arXiv 쪽에 기재 없음). https://arxiv.org/abs/1409.2752 | 컨볼루션 판: "spatial sparsity within each feature map is achieved using winner-take-all activation functions", 배치 통계로 lifetime sparsity 강제. MNIST·CIFAR-10·ImageNet 등에서 경쟁력 있는 분류 (초록에 수치 없음) | **intra_ch(맵 안 위치끼리 경쟁)에 대응하는 ANN 선례**와 '특징 맵 단위' 희소성 | 비지도 오토인코더 |
+| **FBS** [본문] | Gao, Zhao, Dudziak, Mullins, Xu, "Dynamic Channel Pruning: Feature Boosting and Suppression", ICLR 2019. https://arxiv.org/abs/1810.05331 | §3.4 식 (7): 채널의 공간 차원을 스칼라로 줄여(ℓ1 노름 = ReLU 활성에서 global average pooling) 채널 saliency 를 예측하고, 식 (6): `wta_k` 가 가장 큰 k 개 채널만 남기고 나머지를 0 으로 억제. 층마다 `λ·E‖g_l‖₁` lasso (λ = 1e-8). 초록: VGG-16 5배, ResNet-18 2배 연산 절감, top-5 손실 0.6% 미만 (ImageNet) | **채널 공간합으로 채널끼리 승자독식하는 방식이 효율 이득을 낸 ANN 선례.** `c` 와 같은 양을 쓴다 | 입력별 동적 게이트(예측기 추가, 추론 시에도 경쟁). 손실만으로 하는 것이 아님. SNN 아님 |
+| **SSL** [초록·본문] | Wen, Wu, Wang, Chen, Li, "Learning Structured Sparsity in Deep Neural Networks", NIPS 2016. https://arxiv.org/abs/1608.03665 | group Lasso 로 필터·채널·필터 모양·층 깊이를 정규화. AlexNet 합성곱 층 CPU 5.1배·GPU 3.1배 가속 (초록: "about twice speedups of non-structured sparsity"), CIFAR-10 ResNet-20 → 18층에서 91.25% → 92.60% | 채널 단위 희소를 정규화로 학습 | 가중치 그룹에 거는 ℓ2,1. inter 는 활동 `S` 에 채널별 가중 `w` 를 곱한 단일 ℓ2 이며 group lasso 와 같은 식이 아니다 |
+| **Network Slimming** [본문] | Liu, Li, Shen, Huang, Yan, Zhang, ICCV 2017. https://arxiv.org/abs/1708.06519 | 채널 희소는 "nice tradeoff between flexibility and ease of implementation"이고 비정형 희소는 "requires special software or hardware accelerators". Table 1 (CIFAR·SVHN): 채널 ≥60% 제거해도 정확도 유지, 파라미터 최대 10배·FLOP 약 50% 절감, 40% 제거는 대개 오류 감소. ResNet-164 는 병목 구조가 이미 채널을 골라 절감이 작다 | 채널 희소성의 장점 서술을 그대로 가져올 수 있다 | BN γ 에 균등 ℓ1(비교 대상인 균등 벌점 쪽). 활동이 아니라 파라미터 |
+| **Polarization regularizer** [초록] | Zhuang, Zhang, Huang, Zeng, Shuang, Li, NeurIPS 2020. https://papers.nips.cc/paper/2020/hash/703957b6dd9e3a7980e040bee50ded65-Abstract.html | "L1 regularization lacks discrimination between neurons because it pushes all scaling factors towards 0"; 제안은 일부는 0, 나머지는 0 보다 큰 값으로 분극시키고 CIFAR·ImageNet 에서 L1 보다 낫다고 보고 (수치 표 미열람) | "균등 벌점은 구분이 없다"의 ANN 선례 (앞 절 P1 재확인) | 대상이 BN γ |
+| **SASL** [본문] | Shi, Xu, Tasaka, Chen, arXiv 2003.05891 (arXiv 코멘트: IEEE TCSVT 게재 수락, 쪽수 미확인). https://arxiv.org/abs/2003.05891 | 서론: 모든 필터에 같은 규제를 하면 "the performance of important filters ... is also influenced by the equal regularization, so the final prediction precision after SL may drop by a large margin". §III-C: 필터를 saliency 순위로 5등급으로 나눠 규제 배율을 {0×, 1×, 2×, 3×, 4×} 로 주고 "for the filters of the most significant class, no regularization", 가장 약한 필터에 최강 벌점, 순위는 학습 중 계속 갱신. 초록: ImageNet ResNet-50 FLOPs −49.7%, top-1 −0.39%, top-5 −0.05% | **구조가 inter 와 같다 (최강은 무벌점, 약할수록 센 벌점, 학습 중 순위 갱신).** 우리 설계 논리("균등 벌점은 중요한 쪽도 깎는다")의 정확한 ANN 선례 | saliency = (기울기·가중치)² / 연산 비용 (식 6) 이라 가중치·연산량 기반이고 활동이 아님. 규제는 BN γ 에 건다. 5등급 이산. 균등 대비 직접 비교 표는 이번에 안 읽음 |
+| **Trimmed ℓ1; DeepHoyer; reweighted ℓ1; adaptive lasso** [Trimmed 2차, DeepHoyer·reweighted 초록] | Yun, Zheng, Yang, Lozano, Aravkin, ICML 2019 (PMLR 97:7242–7251) https://proceedings.mlr.press/v97/yun19a.html ; Yang, Wen, Li, DeepHoyer, ICLR 2020 https://arxiv.org/abs/1908.09979 ; Candès, Wakin, Boyd, arXiv 0711.1612 (저널 서지는 arXiv 쪽에 없음) https://arxiv.org/abs/0711.1612 ; Zou, JASA 101(476):1418–1429 (2006) (검색 확인) | Trimmed: 가장 큰 항 h 개를 벌점에서 제외하는 ℓ1, 딥러닝 희소화에도 적용. DeepHoyer: ℓ1 은 "the same shrinking rate to all parameters, which is inefficient in increasing sparsity". reweighted ℓ1: 이전 해에서 가중치를 다시 계산하는 가중 ℓ1 을 반복해 "in many situations outperforms L1". adaptive lasso: 계수마다 다른 가중으로 oracle 성질 | **큰 쪽을 덜 벌하고 작은 쪽을 더 벌하는 비균등 가중이 균등 ℓ1 보다 희소화에 유리하다는 통계·최적화 선례** | 가중치(계수) 단위. 활동·SNN 아님. 이 문헌들은 정확도가 아니라 지지 회복·희소도 이론 |
+| **APoZ** [본문 일부] | Hu, Peng, Tai, Tang, "Network Trimming", arXiv 1607.03250. https://arxiv.org/abs/1607.03250 | "the outputs of a significant portion of neurons in a large network are mostly zero" → 중복. VGG-16 에서 APoZ 90% 초과 뉴런 631개. 프루닝 후 재학습으로 정확도 손실 없이 또는 오히려 향상 | 활동이 낮은 뉴런·채널 = 중복이라는 (가) 전제의 ANN 선례 | 영(0) 비율 기준. 층 간 비교는 별개 (Molchanov 는 첫 층 APoZ 가 목표와 무관하게 비슷하다고 지적) |
+| **Molchanov 2017** [본문 표] | "Pruning CNNs for Resource Efficient Inference", ICLR 2017. https://arxiv.org/abs/1611.06440 | Table 1: 특징 맵 제거 효과(oracle)와의 Spearman 상관, **층 안 순위**. 평균 활성: AlexNet/Flowers-102 0.65, VGG-16/Birds-200 0.56, AlexNet/ImageNet **0.09**. APoZ 0.54 / 0.35 / −0.06. Taylor 0.77 / 0.73 / 0.58. 가중치 크기 0.17 / 0.27 / 0.57 | **inter 는 층 안에서 채널 순위를 쓰므로 이 '층 안' 행이 맞는 비교다.** 미세조정 소형 과제에서는 활동량이 중요도의 중간 정도 대리 지표 | 처음부터 학습한 ImageNet AlexNet 에서는 활동량이 거의 무상관(0.09). Taylor 가 항상 더 낫다. SNN·스파이크 아님 |
+| **Ye 외 2018; FPGM** [본문] | Ye, Lu, Lin, Wang, "Rethinking the Smaller-Norm-Less-Informative Assumption in Channel Pruning", ICLR 2018 https://arxiv.org/abs/1802.00124 ; He, Liu, Wang, Hu, Yang, "Filter Pruning via Geometric Median", CVPR 2019 Oral (arXiv 코멘트) https://arxiv.org/abs/1811.00250 | Ye: "this assumption is not unconditional", 정규화 없이 노름을 쓰면 해석이 어긋난다. FPGM: 노름 기준의 효과는 "(1) the norm deviation of the filters should be large; (2) the minimum norm of the filters should be small" 두 조건에 의존하며 항상 충족되지 않는다 | (가) 전제가 성립하는 조건을 명시한다. 6절에서 우리 모델이 두 조건을 만족하는지 대조 | 가중치·BN γ 노름 이야기이지 활동량은 아니다. 유추로만 사용 |
+| **Rethinking the Value of Network Pruning** [초록] | Liu, Sun, Zhou, Huang, Darrell, ICLR 2019. https://arxiv.org/abs/1810.05270 | 구조적 프루닝에서 "fine-tuning a pruned model only gives comparable or worse performance than training that model" 를 처음부터 학습한 것과 비교, "pruned architecture itself ... is more crucial", "pruning can be useful as an architecture search paradigm" | 채널이 죽어 생긴 층별 채널 수(구조)가 가치라는 해석 — 채널 소멸을 표현력 손실이 아니라 구조 탐색으로 읽는 선례 | 사후 프루닝 맥락 |
+
+### 3. SNN 선행
+
+| 문헌 | 서지·URL | 확인한 문장·수치 (표·설정) | inter 와 겹치는 점 | 다른 점·한계 |
+|---|---|---|---|---|
+| **SCA** [본문] | Li, Shen, Xu, Chen, Pan, Zhang, Xu, ICML 2024 (PMLR 235:29063–29073). https://proceedings.mlr.press/v235/li24bz.html , https://arxiv.org/abs/2406.01072 | 비정형 연결 프루닝은 "requires specific hardware support"이라며 채널 단위 구조적 프루닝 제안. §4.2 식 (4): 채널 활동 `r_k^l = (1/NT)ΣΣ H_k^l(t)`, 즉 **채널 특징 맵 막전위 L1 노름의 평균**이 작은 채널을 제거하고 일부 재성장. 본문(그림 2 서술): SNNVGG16 CIFAR-10 에서 파라미터 약 30% 수준일 때 91.67% (+0.53; 영문이 "reduced by approximately 30%" 라 방향이 모호하고 앞 절 표는 28.4% 잔존으로 읽음), 약 5% (0.93M) 로 압축하면 약 −2%. 앞 절 표 (VGG16 C10, 기준 91.14): +0.32 @파라미터 55.9%, +0.53 @28.4%, −0.88 @9.3%. DVS-CIFAR10 파라미터 6.95% 에서 −1% 미만. CIFAR-10 채널 제거율 0.8 에서 SynOps 거의 절반 | **SNN 에서 활동 낮은 채널을 지워도 정확도가 유지된다는 가장 직접적인 SNN 선례.** 활동 정의가 막전위 크기라 우리 vmem(침묵 뉴런의 막전위 기여)과 맞닿는다 | 정확도 수치는 그림 서술이며 표 수치는 앞 절(compare-list 행 13) 참조. 사후 프루닝+재성장이고 규제가 아님. 활동 낮은 채널을 지우는 방향이라 **inter 와 같은 가정**. 한 리뷰(arXiv 2407.08744)는 SCA 를 "lower average spike firing frequency"로 요약하나 논문 정의는 막전위다 |
+| **Spike-Thrift / AGC** [본문] | Kundu, Datta, Pedram, Beerel, arXiv 2107.12445 (arXiv 제목은 "Towards Low-Latency Energy-Efficient Deep SNNs via Attention-Guided Compression"; 앞 절이 적은 WACV 2021 과 같은 논문인지 이번에 대응 확인 못 함). https://arxiv.org/abs/2107.12445 | 초록: 비정형·구조적(채널) 프루닝 모두 지원. 관찰 3: "Structured SNN pruning yields reduced compression compared to irregular pruning for similar accuracy performance, yet perform considerably better in effective channel-size reduction" — VGG16 은 5배 압축에서 **채널 압축 3.55배**, 비정형 33.4배 압축에서 채널 압축은 1.15배. 채널 순위는 가중치 Frobenius 노름 (§III-B) | 채널 단위 희소가 비정형과 다른 이득(채널 폭 감소)을 준다는 SNN 근거 | 같은 정확도에서 구조적 압축률이 약 한 자릿수 낮다 (5절). 활동이 아니라 가중치 노름. 변환 ANN 기반 |
+| **Spik4lite** [본문+슬라이드] | She, Zhou, Wang, Huang, Cui, Guo, ICML 2026 (PMLR v306). https://proceedings.mlr.press/v306/she26b.html (슬라이드 https://icml.cc/media/icml-2026/Slides/63522_o3YAsDZ.pdf) | "We convert 'spike sparsity' into 'channel sparsity', ensuring that the hardware truly reduces calculations". 상용 하드웨어에서 "these zeros still participate in dense matrix multiplications". 정적 FLOPs 만 벌하면 "the network tends to retain a minimal set of channels but forces them to fire continuously" → 채널 발화율을 벌점에 넣는 이유. Table 1 (앞 절 읽음, CIFAR-10 T=4 Spikformer-4-384): 95.24 → 94.15, SOPs −60.9%, Jetson Orin Nano 실측 5.34 → 3.08 J. 모든 행 정확도 −0.63~−3.81%p, n 미기재 | **채널 단위 제거 + 채널 발화율 결합 + 실기 에너지.** inter 의 (다) 전제를 가장 직접 지지 | 라우터·게이트 추가(구조 변경), 정확도 손실, 이득은 스파이크 희소가 아니라 밀집 연산 축소에서 나온다고 저자가 설명. 수동 λ |
+| **UPR** [본문 grep] | Shi, Ding, Hao, Yu, ICLR 2024. https://proceedings.iclr.cc/paper_files/paper/2024/file/dd3c889922df2112a5b1769e3c19e28e-Paper-Conference.pdf | 서론: ANN 의 뉴런 프루닝은 "typically performed in a structured manner. When applied to SNNs, they overlook the fact that neurons in SNNs can also be pruned in a fine-grained manner. This oversight hinders the full utilization of the sparse computing capabilities of neuromorphic hardware." 채널 수준 프루닝의 예로 BN 스케일 규제(Zhuang 2020) 등을 인용 | **inter 가 속하는 '구조적 뉴런 프루닝'에 대한 가장 직접적인 반론** | 저자의 논지이고 측정 비교가 아님. UPR 수치는 10-13 절 "기존 항목 갱신" 참조 |
+| **Inherent Redundancy in SNNs** [본문] | Yao, Hu, Zhao, Wang, Zhang, Xu, Li, ICCV 2023, pp. 16924–16934 (OpenAccess 페이지 검색 확인). https://arxiv.org/abs/2308.08227 | Observation 3: "the C-SFR is closely related to the spike patterns learned by this channel." 잡음 패턴 채널은 "fires many spikes while focusing on trivial background information", 정상 패턴 채널은 "lower C-SFR focuses on salient gait information in a condensed region". Observation 5: PTD ≥ 0 이면 발화 뉴런이 많고 배경 잡음 패턴 | **발화가 많은 채널이 잡음일 수 있다 — inter 의 전제 방향과 반대.** inter 는 최강(발화합 최대) 채널을 무벌점으로 둔다 | 보행(gait) 예시 (앞 절 기록: 제스처·보행 DVS 데이터), 공간 어텐션 모듈 제안. 채널 평균 발화율(C-SFR)로 보고, 그 채널이 층 안에서 상대적으로 큰 것이 해로운지는 보이지 않았다 |
+| **Efficient Structure Slimming; SNN 압축 서베이** [2차] | Li, Fang, Gao, Zhou, Shen, Liu, Pan, Xu, IEEE Trans. Artif. Intell. 5(8):3823–3831 (2024) (서지만 검색 확인, 본문 미열람). 서베이: Xie, Yang, Gao, arXiv 2407.08744 (본문 열람) | 서베이 서술: SNN 판 Network Slimming 은 "due to the thresholding nature of DSNNs, the pruning is not thorough enough, achieving only 60% channel pruning while maintaining accuracy". 검색 요약: 파라미터 약 10% 로 줄여도 성능 저하 1% 미만 (CIFAR-10/100·DVS-Gesture) | 채널 프루닝의 SNN 한계 서술 | **2차 인용.** 60% 수치는 서베이의 요약이고 원 논문에서 확인하지 못했다 |
+| **DeepEISNN** [초록] | Liu, Ding, Yu, ICLR 2026 (arXiv 코멘트). https://arxiv.org/abs/2509.23253 | E-I 회로가 "subtractive and divisive inhibition" 으로 뉴런의 흥분성과 이득을 조절, 정규화 없이 깊은 SNN 학습 | SNN 에서 제산 억제를 학습 가능한 구성 요소로 쓴 선례 | 구조 변경. 초록에 희소성·스파이크 감소 수치 없음 |
+| **FGKDSNN** (ICLR 2027 제출본) [초록 OpenReview API] | https://openreview.net/forum?id=9S2vkFszgH | "the firing activity is highly concentrated across feature channels"; "strengthening teacher feature transfer to more active student channels" | 발화가 채널에 쏠린다는 관찰과, 발화 많은 채널을 더 중요하게 취급하는 설계 (inter 의 전제와 같은 방향) | **심사 중 제출본이라 인용 보류.** 증류 논문이고 규제 아님. 본문 미열람 |
+| **PopFR-CV** (ICLR 2027 제출본) [앞 절 초록 기록] | https://openreview.net/forum?id=ay5isa4N9N (이번 세션 재열람 안 함) | 활동 목적함수가 의도와 반대 방향 통계를 낳고 SDT 에서 침묵 좌표가 +30%p 이상 늘 수 있다 (앞 절 기록) | 규제가 만드는 집단 구조를 측정해야 한다는 압력 | 심사 중, 초록만 |
+
+**3절 소결.** SNN 쪽에서 inter 의 (가)·(다) 전제를 직접 건드리는 선례는 **SCA(채널 활동 기반 제거)·Spik4lite(채널 발화율 기반 제거 + 실측)** 둘이다. 둘 다 **사후 프루닝 또는 게이트 구조**이고 정확도를 일부 잃는다(Spik4lite −0.63~−3.81%p, SCA 고압축 구간 약 −2%). **규제 손실만으로 채널 간 상대 경쟁을 거는 SNN 논문은 이번 조사에서 찾지 못했다.**
+
+### 4. 하드웨어 (채널·코어 매핑이 비용과 이어지는가)
+
+| 문헌 | 서지·URL | 확인한 문장·수치 | 의미 | 한계 |
+|---|---|---|---|---|
+| **sinabs 문서 (Speck/DYNAP-CNN)** [본문] | https://sinabs.readthedocs.io/main/speck/overview.html (페이지 표기 3.1.4.dev13) | "Memory Constraints and Network Sizing": 층마다 **kernel memory(입력 채널 × 출력 채널 × 커널)** 와 **neuron memory(출력 채널 × 출력 H × W)** 로 나뉘고 실제 요구량은 주소 부호화 때문에 더 크다. "Max channel number: 1024". 예: 16→32 채널 3×3 합성곱, 64×64 입력은 neuron 메모리 128Ki 엔트리로 "this layer CANNOT be deployed on the chip". 초과하면 "No valid mapping" 오류 | **Speck 에서는 채널 수가 메모리 비용과 배치 가능 여부를 정한다.** 죽은 채널을 물리적으로 지우면 이 두 값이 줄어든다 (문서 서술에서 한 단계 추론) | 문서는 죽은 채널을 지우면 이득이라고 쓰지 않는다. 추론이다. 죽은 채널은 이벤트를 안 내므로 동적 전력은 원래 0 이다 |
+| **Speck 논문** [본문] | Richter 외, arXiv 2304.06793. https://arxiv.org/abs/2304.06793 | sCNN 코어 9개가 "one convolution and one pooling layer each". 한 코어가 "up to 1024 incoming feature channels" 수신. 커널 주소 압축으로 SRAM 의 동적·정적 에너지 절감을 서술 | 층 = 코어 매핑, 채널 상한 | 전력 비교표(Fig. 10)는 있으나 채널 수와 연결한 측정은 없다 (표 안 값이 어느 칩 것인지 이번에 구분 못 함) |
+| **Loihi** [본문] | Davies 외, IEEE Micro Jan/Feb 2018, Table 2 (pre-silicon, 0.75 V). https://gwern.net/doc/ai/scaling/hardware/2018-davies.pdf | 시냅스 스파이크 연산 최소 23.6 pJ, 칩 내 스파이크 1.7 pJ, **뉴런 갱신 활성 81 pJ / 비활성 52 pJ**. 코어 128개, 뉴런 최대 1,024/코어 | 비활성 뉴런 갱신(52 pJ)이 시냅스 연산(23.6 pJ)의 약 2.2배 → 뉴런 수에 비례하는 비용이 스파이크 수와 별개로 존재할 수 있다 | 표는 시뮬레이션 값이고, 비활성 뉴런 갱신을 칩이 매 스텝 실제로 하는지는 이 표에 없다 |
+| **Lemaire 외 2022** [본문] | An Analytical Estimation of SNN Energy Efficiency, arXiv 2210.13107 (게재 미확인). https://arxiv.org/abs/2210.13107 | 에너지 식에 출력 뉴런·필터마다 매 시간 스텝 바이어스 읽기·쓰기, 누설 MAC, 리셋이 들어간다(스파이크와 무관한 항). 막전위 읽기 `Cout × Hout × Wout` | 채널 수(Cout)에 비례하는 항이 에너지 모델에 있다 | 해석적 모델, 측정 아님 |
+| **Loihi 추정 사례** [본문] | Predictive-maintenance SNN, arXiv 2506.13416 | `E = Nsynops·Esynop + Nneuron updates·Eneuron`, Loihi 추정 에너지의 **86.3% 가 시냅스 연산** (스파이크 수 의존) | 이 모델에서는 스파이크를 줄이는 것이 에너지의 대부분을 줄인다 — 규제의 기본 목표를 지지 | 추정이고 다른 과제. 뉴런 수 감소의 이득은 작게 나온다 |
+| **Braille on Loihi** [본문 grep] | arXiv 2205.15864 | "the more cores we use the more power and energy we consume without a significant impact on the delay" → 최소 8 코어 사용 | 코어를 덜 쓰면 측정 전력이 낮다 (Loihi 실측) | 이 과제의 구조에 한정. 채널 제거와 직접 연결한 실험 아님 |
+
+**4절 소결.** **Speck 에서는 채널 수가 메모리와 배치 가능성을 정한다는 것이 문서로 확인된다 (가장 직접).** Loihi 에서는 뉴런 갱신 비용 표와 코어 수·전력 측정이 간접 근거다. 반대로 에너지 모델에서 시냅스 연산이 86% 인 사례도 있다. **채널을 지우면 실측 전력이 얼마나 줄어드는지 Speck/Loihi 에서 측정한 논문은 찾지 못했다.** 상용 GPU 에서의 실측은 Spik4lite (Jetson Orin Nano) 하나뿐이다.
+
+### 5. 반대 근거 (inter 에 불리)
+
+1. **"많이 쏘는 채널 = 중요한 채널"의 방향.** Inherent Redundancy (ICCV 2023) 는 발화가 많은 채널이 배경 잡음 패턴이라고 관찰한다 (DVS 보행). inter 는 층 안 최대 채널을 벌점 0 으로 둔다. Molchanov 2017 은 처음부터 학습한 AlexNet-ImageNet 에서 평균 활성과 제거 효과의 층 안 순위 상관을 0.09 로 보고한다. Ye 2018·FPGM 도 "작은 노름 = 덜 중요" 가정이 조건부임을 보인다.
+2. **구조적(채널) 프루닝이 비정형보다 압축률이 낮다.** Spike-Thrift 관찰 3: 같은 정확도에서 압축률이 약 한 자릿수 낮다. UPR 은 구조적 뉴런 프루닝이 뉴로모픽 칩의 희소 연산을 못 쓴다고 주장한다. inter 는 스파이크 감소의 **9% ±2 만** 채널 사망에서 오고 나머지는 산 채널 안 발화 감소다 (inter_deep_261005.md, n=19). 구조적 이득의 크기는 작다.
+3. **채널 소멸 = 표현력 손실 가능성.** Spik4lite −0.63~−3.81%p, SCA 고압축 약 −2%. Dying ReLU (Lu, Shin, Su, Karniadakis, arXiv 1903.06733 [초록]) 는 모든 입력에 0 을 내는 뉴런이 기여할 수 없고 깊은 ReLU 망이 확률적으로 죽을 수 있다고 증명한다 (신경 사망의 일반 위험, 규제와 직접 관계는 아님). 우리 측정에서도 같은 스파이크에서 죽은 채널이 많은 런일수록 정확도가 낮다 (부분상관 r=−0.38, 6절).
+4. **승자독식 경쟁의 '부익부' 위험.** Diehl & Cook 2015 (Front. Comput. Neurosci., [WebFetch 요약]): 측면 억제로 흥분 뉴런이 경쟁하는 SNN 에서 뉴런 임계값이 발화할 때마다 올라가고 시간에 따라 감소해 "prevent single neurons from dominating the response pattern". 경쟁 학습의 '죽은 유닛' 문제는 오래된 알려진 문제다 (Rumelhart & Zipser 1985, DeSieno 1988 은 강의 슬라이드 https://www.cs.hmc.edu/courses/2004/fall/cs152/slides/compet.pdf 로만 확인 [2차]). inter 에는 이를 막는 항상성 항이 없고 대신 vmem 항(침묵 뉴런 막전위 기여)이 있다.
+5. **생물학 대응이 약하다.** Priebe & Ferster 2008 (Neuron 57(4):482–497, doi 10.1016/j.neuron.2008.02.005 [초록]): 교차 방위 억제 등 "lateral inhibition 이 필요해 보이던" 성질이 spike threshold·contrast saturation 같은 feed-forward 비선형성으로 설명된다. Carandini & Heeger 2012: V1 정규화에 GABA 억제는 역할이 작다. Torrado Pacheco 외 2021 (Neuron 109(3):530–544, doi 10.1016/j.neuron.2020.11.001 [초록]): V1 뉴런은 "individual set point" 주변으로 발화율을 양방향 조절 — 생물학은 침묵을 허용하기보다 set-point 를 지키는 쪽이다.
+6. **'균등 희소화가 더 낫다'는 직접 결과는 못 찾았다.** SNN 활동 규제에서 균등 대 비균등을 같은 조건으로 비교한 논문은 이번 조사에 없다. 우리 측정이 유일하다: inter 대 BPSR (균등 제곱 ℓ2) 같은 스파이크 정확도 차 +0.04 ±0.04%p (p=0.29, 300~420K, inter n=11 / BPSR n=6, analysis/inter_vs_bpsr_261009.md). 즉 균등 쪽이 낫다는 증거도 못 찾았고 inter 가 낫다는 증거도 정확도에서는 없다.
+7. **실측 프록시 비판 (이미 있음).** The Sparsity Ceiling (arXiv 2607.26648, 이번에 pdftotext 16.7KB 를 열었으나 채널·구조적 희소 서술 없음), Yoo 외 VS-WNO (앞 절 M6): 발화율이 54% → 18% 로 줄어도 Jetson 에서 dense 보다 나쁨. 채널 제거는 이 비판의 한 가지 해법(Spik4lite)이지만 스파이크 감소 자체는 아니다.
+
+### 6. 우리 측정과의 대조 (문헌의 전제가 우리 모델에서 성립하는가)
+
+원본은 `analysis/inter_vs_bpsr_261009.md` §1 표, `analysis/inter_deep_261005.md`, `docs/decisions.md` 10-05 절. 이번에 다시 계산하지 않았다. 모두 R19 C10 T=4.
+
+| 문헌의 전제 | 우리 수치 (n) | 해석 |
+|---|---|---|
+| FPGM 조건 (1) 노름(활동)의 편차가 크다 | baseline 채널 지니(스파이크 가중 평균) 0.4256, 상위 10% 채널의 스파이크 몫 25.62% (층 평균, 균등이면 10%) (n=3). inter 1.5e-3: 0.4695, 28.26% (n=3) | baseline 에서 이미 채널 활동의 편차가 크다. inter 는 이를 더 벌린다 |
+| FPGM 조건 (2) 최솟값이 0 에 가깝다 | baseline 죽은 채널 534.0 / 4,736 (11.3%), 이를 지우면 MACs −19.38% (n=3) | 가장 약한 채널이 이미 0 이다. 두 조건 모두 만족하는 것으로 보인다 (유추: FPGM 은 가중치 노름) |
+| (가) 죽은 채널을 지워도 정확도 불변 | 죽은 채널 제거 시 Δacc 0.00 (28런, decisions 10-05) | 추론 시 중복이라는 직접 확인 |
+| (나) 상대 가중의 구조적 이득 | 같은 스파이크 (300~420K) inter − BPSR: 죽은 채널 +49.8 [+28.3, +71.2] (p=0.0002), 죽은 채널 제거 시 MACs +3.44%p [+2.11, +4.76], 이미지당 활성 뉴런 −5.7% [−6.9, −4.4] (inter n=11 / BPSR n=6) | 구조적 축에서는 inter 가 앞선다 (4·5절의 구조적 이득 논지와 일치) |
+| (나) 정확도 이득 | 같은 스파이크 정확도 차 +0.042 [−0.039, +0.123] %p, p=0.29 (같은 n). n≤4 에서 0.15~0.2%p 미만 판정 불가 | 정확도 우위는 판정 불가 (유의하지 않음을 숨기지 않는다) |
+| (가) 죽은 채널이 많을수록 | 같은 팔·같은 스파이크에서 죽은 채널↑ → 정확도↓, 부분상관 r=−0.38 (p=0.017, n=40) | 문헌의 "채널 소멸 = 손실 가능성"과 같은 방향. 구조적 이득과 정확도는 별개 |
+| 채널 사망의 몫 | inter 의 스파이크 감소 중 채널 사망 몫 9% ±2 (n=19) | 5절 2번 — 하드웨어 이득의 규모는 작다 |
+| Molchanov: Taylor > 활동량 | `ours_ch_taylor` 4점 역분산 평균 잔차 +0.003%p, CI [−0.13, +0.13] | 활동량 대신 Taylor 순위로 바꿔도 곡선이 안 움직인다. 검정력상 0.1%p 효과는 배제 못 함 |
+| FBS·SASL 의 '최강 무벌점' | inter 는 층 안 최대 채널 `w=0` | 관련 관찰: ~300K 아래에서 inter 가 다른 팔보다 0.16~0.24%p 낮다 (inter n=1 점 포함, inter_deep §0 3번). 원인이 '최강 채널 무벌점'인지는 **미확인** |
+
+### 7. 못 찾은 것·미확인 (본문 인용 금지)
+
+- **채널 공간합 상대 경쟁을 SNN 스파이크 손실로 쓴 선행 논문, 그리고 SNN 활동 규제에서 균등 대 비균등을 직접 비교한 논문**: 찾지 못했다. 못 찾은 것이지 없다는 뜻이 아니다 (검색은 영어 키워드, arXiv·OpenReview·PMLR·PubMed 위주; Springer·IEEE 본문은 접근 못 함).
+- **"특징 채널 공간합끼리 겨루는 규제"의 직접 생물학 근거**: 못 찾음. 후각 사구체 간 억제(Olsen 2010)가 가장 가깝고 억제 세기가 최대치가 아니라 전체 활동에 비례한다.
+- **Speck/Loihi 에서 채널·뉴런을 줄였을 때의 실측 전력 논문**: 못 찾음. Spik4lite (Jetson) 만 있다.
+- **[2차] 로 표시한 것**: Rozell 2008 (PDF 미열람), Trimmed ℓ1 (PMLR 페이지는 검색 요약만), Zou 2006 (초록 수준 확인 못 함), Barth & Poulet 2012 (요약 문장), Efficient Structure Slimming 본문과 서베이의 "60%" 수치, Diehl & Cook 2015 (WebFetch 요약), 경쟁 학습 죽은 유닛(강의 슬라이드).
+- **열지 못한 것**: Springer(Applied Intelligence 2023 "An efficient pruning and fine-tuning method for deep spiking neural network", 채널 점수에 BN γ 와 발화율을 함께 쓴다고 검색 요약에만 나옴, 수치 미확인), Hahnloser 외 2000 / Douglas & Martin 2004 (PubMed 검색에서 서지 확인 실패, 인용하지 않음).
+- **SASL 게재 서지**: arXiv 코멘트에 IEEE TCSVT 수락만 있고 권·쪽 미확인. **Spike-Thrift**: 앞 절의 WACV 2021 표기와 arXiv 제목이 다르다. 대응 확인 전에는 두 서지를 한 논문으로 단정하지 않는다.
+- 심사 중 제출본 (FGKDSNN, PopFR-CV) 은 초록만 확인했고 인용 보류.
+
+### 8. 논문에 쓸 때의 범위 (제안만, 결정은 사용자)
+
+1. "채널 간 경쟁은 생물학적으로 타당하다"는 **근거가 아니라 영감**으로만 쓴다. 쓸 수 있는 문장: 정규화·승자독식(Carandini & Heeger 2012), 후각 채널 간 측면 억제(Olsen 2010), 컨볼루션 SNN 의 intra/inter-map competition (Kheradpisheh 2018).
+2. ANN 선례는 구성 요소별로 인용한다: 채널 공간 풀링 + 채널 k-WTA (FBS), 순위 기반 비균등 벌점과 최강 무벌점 (SASL, Trimmed ℓ1), 균등 벌점의 한계 (Polarization, DeepHoyer, SASL 서론). 새로움은 **"SNN 스파이크 손실에서 채널 간 상대 경쟁 가중"으로만 한정**한다.
+3. 하드웨어 주장은 "채널 단위 희소는 Speck 의 메모리·매핑(채널 수 기반)과 상용 GPU 의 밀집 연산에 직접 이득, 스파이크 단위 희소는 그렇지 않다" 수준으로 쓰고, 실측은 없음을 한계 문장에 둔다. 규모는 6절의 9% ±2, MACs +3.44%p 를 같이 적는다.
+4. 반론 대비: (가) 방향 (Inherent Redundancy), UPR 의 "구조적은 희소 연산을 못 쓴다", Spike-Thrift 의 압축률 차이. 우리 데이터로 답할 수 있는 것은 "죽은 채널 제거 Δacc 0.00 (28런)"과 "같은 스파이크에서 활성 뉴런 −5.7%" 뿐이다.
+5. 정확도 우위는 쓰지 않는다 (BPSR 대비 +0.04 ±0.04, p=0.29).
