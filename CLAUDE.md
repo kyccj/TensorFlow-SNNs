@@ -78,7 +78,8 @@ lib_snn/neurons.py   flags.py   run_paper.py   config_snn_training.py
 - **sejong** = 161.122.23.23 (표기 `23`), ssh 포트 **23456**.
   산출물 `/srv2/kyccj/EIP/paper`, python `~/anaconda3/envs/venv_eip/bin/python`.
   `EIP_STORE`/`EIP_PYTHON` export 필요
-- **canus GPU 6,7 은 juyun 것이다. 절대 쓰지 않는다.**
+- **canus GPU 6,7 사용 허용 (2026-10-13 사용자: "앞으로는 6,7번 지피유도 다 사용해도 괜찮아").** 이전 규칙은 "juyun 것, 절대 쓰지 않음". `queue_runner.py` 의 6,7 차단 assert 도 10-13 제거함 (미커밋). 지금 돌고 있는 실행기(--gpus 0-5)는 옛 코드 그대로이고, 6,7 을 큐로 쓰려면 `--gpus 6,7` 실행기를 하나 더 붙인다 (기동은 3등급).
+- **55 서버** = 161.122.23.55 (표기 `55`), ssh 포트 **23456** (sejong 과 같은 관리 배너). **GPU 6,7,8,9 사용 허용 (2026-10-19 사용자: "이제 55서버 6,7,8,9도 사용해도돼").** 호스트명 `neuro`, A6000 10장 (0~5 는 다른 사람 것). 10-19 canus 키 등록 완료. 산출물 `/srv2/kyccj/EIP/paper`, python `~/anaconda3/envs/venv_1/bin/python` (~/anaconda3 → /srv2/kyccj/anaconda3, canus venv_1 복사). 루트 디스크 95% — 큰 파일은 /srv2.
 - 실행기를 늘릴 때 기존 것을 kill 하지 않는다. **두 번째 실행기를 붙인다** (kill 하면 고아)
 - `pkill -f <패턴>` 금지 — 자기 셸이 죽는다. **`kill` 에는 정확한 PID 만 넘긴다.**
   `for p in $(ps | grep 패턴)` 처럼 grep 결과를 kill 에 흘리는 것도 같은 사고다 (09-19, exit 144).
