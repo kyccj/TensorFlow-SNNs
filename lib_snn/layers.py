@@ -466,6 +466,10 @@ class Layer():
             # TODO: add codes to check parent's class call argument - including training or not
             if isinstance(self, lib_snn.layers.BatchNormalization):
                 output = super().call(input,training)
+                # 26-10-20 2a UniSparse (lib_snn/thr_reg.py): 뒤 뉴런의 그림자 순전파가 이 BN 입력을 상수로
+                # 다시 정규화해 gamma·beta 기울기만 낸다. thr_reg.setup 이 표시한 BN 만 참조를 남긴다 (연산 없음).
+                if getattr(self, '_thr_stash', False):
+                    self._thr_in = input
             else:
                 output = super().call(input)
 

@@ -287,6 +287,17 @@ class Neuron(tf.keras.layers.Layer):
         if conf.reg_spike_suetake and self.loc == 'HID':
             self.suetake_psi = tf.Variable(0.0, trainable=False, name="suetake_psi")
 
+        # 26-10-20 2b AT-LIF (lib_snn/thr_reg.py): 층당 학습 임계값 theta (출력 o = theta*s, 초기값 = vth 초기값)
+        # 와 규제 통계(식 12 둘째 항). 플래그가 꺼져 있으면 만들지 않는다 -- 기존 런의 그래프·가중치 파일이
+        # 그대로다. 은닉층만 (다른 규제와 같은 범위). trainable 인 것은 train_step 이 과제 기울기를 구하게
+        # 하려는 것이고, AdamW 에는 넘기지 않는다 (thr_reg.route_grads 가 빼고 apply_after_step 이 식 12 로
+        # 갱신·하한 적용). 그래서 constraint 를 달지 않는다 -- 옵티마이저 밖 변수에는 적용되지 않는다.
+        if conf.reg_spike_atlif and self.loc == 'HID':
+            self.atlif_theta = self.add_weight(name='atlif_theta', shape=[], dtype=tf.float32,
+                                               initializer=tf.keras.initializers.Constant(self.vth_init_const),
+                                               trainable=True)
+            self.atlif_reg = tf.Variable(0.0, trainable=False, name="atlif_reg")
+
         if conf.reg_spike_log_detail:
             self.sc_rate_snap = tf.Variable(0.0, trainable=False, name="sc_rate_snap")
             self.firing_rate_snap = tf.Variable(0.0, trainable=False, name="firing_rate_snap")
@@ -608,7 +619,14 @@ class Neuron(tf.keras.layers.Layer):
         #out = run_type[self.n_type](inputs, t, training)
         #out = run_type[self.n_type](inputs, training)
         #out = run_type[self.loc](inputs, t, training)
-        spike, vmem = run_type[self.loc](inputs, vmem_prev_t, t, training)
+        # 26-10-20 2b AT-LIF: 은닉층은 정규화 좌표 m/theta 에서 같은 LIF 를 돌리고 다음 층으로는 theta*s 를
+        # 내보낸다 (thr_reg.atlif_step, 맨 아래 return). spike·vmem 은 이진 s 와 정규화 막전위라 아래
+        # spike_count·지표는 s 로 센다. 꺼져 있으면 기존 줄 그대로.
+        if conf.reg_spike_atlif and self.loc == 'HID':
+            from lib_snn import thr_reg as _thr
+            spike, vmem, atlif_out = _thr.atlif_step(self, inputs, vmem_prev_t, t, training)
+        else:
+            spike, vmem = run_type[self.loc](inputs, vmem_prev_t, t, training)
         #out_ret = spike
 
         #self.t = t
@@ -685,6 +703,13 @@ class Neuron(tf.keras.layers.Layer):
         out_ret_int = self.spike_count_int
 
         self.count_spike(t,spike)
+
+        # 26-10-20 2a UniSparse: 이 층 입력을 스텝마다 모아 t=T 에서 그림자 순전파로 dE/d(gamma,beta) 를
+        # 구해 둔다 (thr_reg.unisparse_step). 손실에는 아무것도 안 더하고 갱신은 model.py 의 apply_gradients
+        # 앞뒤에서 한다 (thr_reg.route_grads / apply_after_step). 학습 스텝에서만, 꺼져 있으면 아무 연산도 없다.
+        if conf.reg_spike_unisparse and self.loc == 'HID':
+            from lib_snn import thr_reg as _thr
+            _thr.unisparse_step(self, inputs, t, training)
 
         #
         if conf.f_record_first_spike_time:
@@ -1481,6 +1506,10 @@ class Neuron(tf.keras.layers.Layer):
         # ch_imp 가 없으면(기본 'spike') 이 줄은 아무 연산도 추가하지 않는다.
         if hasattr(self, 'ch_imp'):
             out_ret = self._ch_taylor_tap(out_ret)
+
+        # 26-10-20 2b AT-LIF: 다음 층으로는 theta*s (식 10). 위 지표는 이진 s 로 계산돼 있다.
+        if conf.reg_spike_atlif and self.loc == 'HID':
+            out_ret = atlif_out
 
         #return out_ret, grad
         return out_ret

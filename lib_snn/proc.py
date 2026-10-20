@@ -391,6 +391,13 @@ def preproc_epoch_train_snn(self, epoch):
         from lib_snn import suetake as _sue
         _sue.epoch_begin(self.model, epoch)
 
+    # 26-10-20 임계값 경로 대조군 (2a UniSparse·2b AT-LIF): 첫 에폭 시작(첫 학습 스텝 추적 전)에 어느 BN·theta
+    # 를 갱신할지 정하고, 매 에폭 gamma/beta·theta 와 지난 에폭 벌점 몫을 찍는다 (theta 가 하한 근처면 멈춘다).
+    # 플래그가 꺼져 있으면 아무것도 안 한다.
+    if conf.reg_spike_unisparse or conf.reg_spike_atlif:
+        from lib_snn import thr_reg as _thr
+        _thr.epoch_begin(self.model, epoch)
+
     # test
     #if epoch % 100==0 and epoch != 0:
     ##if epoch>0:

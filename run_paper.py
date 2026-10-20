@@ -30,6 +30,17 @@
     suetake     Suetake et al. (arXiv 2302.01500) synaptic interaction penalty + 고정 lambda
                 (lambda * sum_l psi_l * sum_i S_i / B, psi_l = fan-out, lambda 는 에폭 비례 선형
                  램프. 경쟁·maxnorm·vmem·wta_rev·loss-ratio 없음. 26-10-04). knob 은 lambda
+    unisparse   UniSparse 스파이크 단독 (Shi, Bu, Yu ICML 2026, --lmbda-weight 0). 벌점
+                g_s * sum_c mean s 의 기울기를 각 층 바로 앞 BN 의 gamma·beta 로만 보내 옵티마이저 밖에서
+                lambda*lr 로 갱신 (원 코드 방식). 가중치는 과제 손실만 받는다 (lib_snn/thr_reg.py, 26-10-20).
+                knob 은 lambda
+    unisparse_opt  unisparse 와 같고 벌점 몫 lambda*dE 를 gamma·beta 기울기에 더해 AdamW 로 (식 14 목적 충실,
+                reg_spike_unisparse_update='optimizer'). 착지 시험 비교용. knob 은 lambda
+    atlif       Activity Pruning AT-LIF (Bu, Shi, Yu NeurIPS 2025). 은닉층 출력 theta*s (층당 학습 theta),
+                theta 는 AdamW 밖에서 식 12 (theta -= lr*dL/dtheta, += lambda*lr*규제 통계). 가중치는 과제
+                손실만 (lib_snn/thr_reg.py, 26-10-20). knob 은 lambda_theta
+    atlif_regonly  atlif 와 같고 theta 의 과제 몫을 버린다 (규제로만 움직임, 원 코드와 사실상 같음.
+                reg_spike_atlif_theta_task='none'). 착지 시험 비교용. knob 은 lambda_theta
     abl_nofinal 제안법에서 final_step 만 끔     (시점의 기여)
     abl_novmem  제안법에서 vmem 만 끔 (gain=0)  (막전위의 기여)
     abl_noinv   제안법에서 1- 반전만 끔         (maxnorm_plain = sc/max. 이름의 근거)
@@ -79,7 +90,7 @@
     (1) 310에폭 미완주  (2) S30/S1 < 0.19  (3) 그래도 5개 남으면 val_acc 상위 4개.
 판정은 `collect_paper.py` 가 한다.
 """
-import argparse, os, re, subprocess, sys, threading, time
+import argparse, math, os, re, subprocess, sys, threading, time
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 # 서버마다 conda 환경 위치가 다르다. EIP_PYTHON 으로 덮어쓴다.
@@ -256,6 +267,29 @@ def METHODS(name, knob):
                 'reg_spike_suetake': True, 'reg_spike_suetake_p': 1,
                 'reg_spike_suetake_ramp': True,
                 'reg_spike_final_step': False, **FIXED(knob)}
+    if name in ('unisparse', 'unisparse_opt', 'atlif', 'atlif_regonly'):
+        # 26-10-20 임계값 경로 대조군 (compare-candidates-261020.md 3.2 B, 구현 lib_snn/thr_reg.py).
+        # base 와 전부 같다 -- reg_spike_out=False 라 neurons.py 의 기존 규제 가지는 하나도 안 돈다. 손실에도
+        # 아무것도 안 더한다. 벌점 몫은 train_step 의 apply_gradients 앞뒤에서 더한다
+        # (unisparse: 바로 앞 BN 의 gamma·beta, atlif: 층당 theta). lambda 는 두 원 논문과 같이 학습 내내 고정이고
+        # 실제 폭은 우리 학습률 스케줄(워밍업 20에폭 + 코사인)을 따라간다.
+        # *_opt / *_regonly 는 갱신 방식만 다른 착지 시험 비교판이다 (10-20 리뷰).
+        # knob 은 e 표기만 받는다 (원장 merge_inv.py 의 이름 정규식이 [0-9p]+e-?[0-9]+ 라 그 밖이면 조용히 빠진다).
+        # '1..2e-3' 같은 오타는 config import 때, '1e999'(inf) 는 수십 시간 뒤 NaN 으로 죽으므로 여기서 거른다.
+        # 0 은 받는다 (과제 몫만 재는 시험용 '0e0').
+        try:
+            v = float(knob)
+        except ValueError:
+            v = float('nan')
+        if not re.fullmatch(r'[0-9.]+e-?[0-9]+', str(knob)) or not math.isfinite(v) or v < 0:
+            raise SystemExit(f'{name} knob 형식 오류: {knob!r} (0 이상 유한값, e 표기, 예: 1e-6)')
+        if name.startswith('unisparse'):
+            upd = "'optimizer'" if name == 'unisparse_opt' else "'direct'"
+            return {**METHODS('base', '-'), 'reg_spike_unisparse': True, 'reg_spike_unisparse_lambda': knob,
+                    'reg_spike_unisparse_update': upd}
+        task = "'none'" if name == 'atlif_regonly' else "'sgd'"
+        return {**METHODS('base', '-'), 'reg_spike_atlif': True, 'reg_spike_atlif_lambda': knob,
+                'reg_spike_atlif_theta_task': task}
     if name == 'ours_layer':
         # 제안법에서 채널 내 max 를 **층 전체 max** 로 바꾼다 (maxnorm_group='none').
         # within_channel 은 채널마다 최고 뉴런이 sc_rate=0 으로 면제되어 어떤 채널도
@@ -576,6 +610,20 @@ def preflight(jobs, sweep_dir, epochs=0, fix_seed=False):
         for rel in ('flags.py', 'models/vggsnn.py', 'lib_snn/model_builder.py'):
             if 'bn_per_step' not in open(os.path.join(PROJECT_ROOT, rel)).read():
                 bad.append(f'{rel} 에 bn_per_step 반영 안 됨')
+    # 26-10-20 임계값 경로 대조군: 플래그 정의·뉴런 분기·옵티마이저 뒤 갱신·에폭 훅이 이 작업 트리에 다 있어야
+    # 한다 (옛 파일이 섞이면 갱신이 조용히 빠지거나 flags 에서 죽는다)
+    for key in ('reg_spike_unisparse', 'reg_spike_atlif'):
+        if any(run_flags(j[0], j[1], j[2]).get(key) for j in jobs):
+            for rel in ('flags.py', 'lib_snn/neurons.py', 'lib_snn/model.py', 'lib_snn/proc.py'):
+                if key not in open(os.path.join(PROJECT_ROOT, rel)).read():
+                    bad.append(f'{rel} 에 {key} 반영 안 됨')
+            if 'route_grads' not in open(os.path.join(PROJECT_ROOT, 'lib_snn', 'model.py')).read():
+                bad.append('lib_snn/model.py 에 thr_reg.route_grads 반영 안 됨 (theta 가 AdamW 로 간다)')
+            if not os.path.exists(os.path.join(PROJECT_ROOT, 'lib_snn', 'thr_reg.py')):
+                bad.append('lib_snn/thr_reg.py 없음')
+            if key == 'reg_spike_unisparse' and \
+                    '_thr_stash' not in open(os.path.join(PROJECT_ROOT, 'lib_snn', 'layers.py')).read():
+                bad.append('lib_snn/layers.py 에 BN 입력 참조(_thr_stash) 반영 안 됨')
     if bad:
         raise SystemExit('중단:\n  ' + '\n  '.join(bad))
     os.makedirs(sweep_dir, exist_ok=True)
@@ -646,8 +694,8 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
-    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_ch_taylor/ours_chxwc/ours_layer/ours_layer_w1/*_st30·*_st60/*_end40·*_end30/l2_lr/abl(nolr 제외)/lw1(nolr 제외)/ch_*(nolr 제외) 은 rho, sm/l2/bpsr/suetake/abl_nolr/lw1_nolr/ch_nolr 은 lambda, base 는 '-'")
+    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake unisparse unisparse_opt atlif atlif_regonly ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
+    ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_ch_taylor/ours_chxwc/ours_layer/ours_layer_w1/*_st30·*_st60/*_end40·*_end30/l2_lr/abl(nolr 제외)/lw1(nolr 제외)/ch_*(nolr 제외) 은 rho, sm/l2/bpsr/suetake/unisparse*/atlif*/abl_nolr/lw1_nolr/ch_nolr 은 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
     ap.add_argument('--dir', default='_paper', help='스윕 디렉토리')
@@ -663,7 +711,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
+        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake unisparse unisparse_opt atlif atlif_regonly ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 

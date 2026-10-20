@@ -2122,7 +2122,18 @@ class Model(tf.keras.Model):
                 # for grad, var in grads_accum_and_vars:
                 #     print(f"Grad shape: {grad.shape}, Var shape: {var.shape,var.name}")
                 #
+                # 26-10-20 임계값 경로 대조군 (2a UniSparse·2b AT-LIF, lib_snn/thr_reg.py): apply_gradients 앞에서
+                # AT-LIF theta 를 AdamW 목록에서 빼고 (unisparse update='optimizer' 면 gamma·beta 기울기에 벌점 몫을
+                # 더하고), 뒤에서 옵티마이저 밖 갱신을 한다 (두 원 코드 모두 optimizer.step() 바로 뒤).
+                # 꺼져 있으면 아무 연산도 없다 -- apply_gradients 줄은 그대로다.
+                if conf.reg_spike_unisparse or conf.reg_spike_atlif:
+                    from lib_snn import thr_reg as _thr
+                    grads_accum_and_vars = _thr.route_grads(grads_accum_and_vars)
+
                 self.optimizer.apply_gradients(grads_accum_and_vars)
+
+                if conf.reg_spike_unisparse or conf.reg_spike_atlif:
+                    _thr.apply_after_step(self.optimizer)
 
                 # only for debug mode
                 #if conf.debug_grad:
