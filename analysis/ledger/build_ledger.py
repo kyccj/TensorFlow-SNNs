@@ -14,8 +14,10 @@ inv = json.load(open(src))
 import datetime as dt, heapq
 # 예상 시각 — 도는 런은 남은 에폭 x 에폭당 시간, 대기 런은 큐 순서(우선, 줄번호)대로
 # 가장 먼저 비는 GPU 에 넣는 모의 배정. GPU 14장 (138 의 0~5 + 23 의 0~7, 138 의 6·7 은 juyun).
+# 26-10-19 서버 55 (GPU 6~9, 4장) 는 55 에 런이 하나라도 보이면(원장에 server '55' 가 있으면) 4장을 더한다.
+# 55 런이 아직 없으면 예전과 같은 14장이라 138/23 의 예상 시각은 그대로다.
 EPOCH_S = 345          # R19 에폭당 초. 09-23 로그 중앙값(329~369s)
-SLOTS = 14
+SLOTS = 14 + (4 if any(r.get('server') == '55' for r in inv['runs']) else 0)
 now = dt.datetime.strptime(inv['generated'], '%Y-%m-%d %H:%M')
 fmt = lambda t: t.strftime('%m-%d %H:%M')
 running = [r for r in inv['runs'] if r['status'] == 'running']
@@ -316,7 +318,7 @@ function render(){
     : ds === 'SDT' ? `SDTv3 (spikformer12_768) · ImageNet 100클래스 서브셋 · 30에폭 · 서버 23 · val 5000장 · val acc 는 최고값(작게: 마지막 에폭) · 스파이크는 이미지당, 마지막 에폭 · 목록 갱신 ${DATA.generated}`
     : ds === 'SDT1K' ? `SDTv3 (spikformer12_768) · ImageNet-1k 전체 · 서버 23 (8 GPU 한 런) · 보정(calib) 3에폭 / 본 런(ft) 30에폭 · 출발점: 공식 171M 1×8 ckpt, head-only 85.72% / 2,045,688 스파이크/이미지 · val acc 는 최고값(작게: 마지막 에폭) · 스파이크는 이미지당, 마지막 에폭 · 목록 갱신 ${DATA.generated}`
     : ds === 'DVS' ? `VGGSNN · CIFAR10-DVS · 200에폭 · 검증 992장 (정확도 1σ ≈ ±1.4%p) · 목록 갱신 ${DATA.generated}`
-    : `ResNet19 · ${ds === 'C10' ? 'CIFAR-10' : 'CIFAR-100'} · 310에폭 · 서버 138/23 · 목록 갱신 ${DATA.generated}`;
+    : `ResNet19 · ${ds === 'C10' ? 'CIFAR-10' : 'CIFAR-100'} · 310에폭 · 서버 138/23/55 · 목록 갱신 ${DATA.generated}`;
   const cnt = {done:0,excluded:0,running:0,todo:0,hold:0,stale:0};
   rs.forEach(r => cnt[r.status] = (cnt[r.status]||0) + 1);
   const miss = rs.filter(missing).length;

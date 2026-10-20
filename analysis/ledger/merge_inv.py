@@ -1,4 +1,4 @@
-"""두 서버 수집 CSV + 큐 상태 → 실험 추적판용 JSON."""
+"""세 서버 수집 CSV + 큐 상태 → 실험 추적판용 JSON. 서버 표기: 138=canus, 23=sejong, 55=neuro."""
 import csv, json, os, re, sys, time
 D = sys.argv[1]
 KEY2ARM = {'base':'baseline','prop':'ours_intra_ch','ours_w1':'ours_w1','ours_layer':'ours_layer',
@@ -10,6 +10,8 @@ KEY2ARM = {'base':'baseline','prop':'ours_intra_ch','ours_w1':'ours_w1','ours_la
   # 26-10-04 Suetake 대조군, ours_inter_ch(run 키 ours_ch) 어블레이션
   'suetake':'Suetake','ch_novmem':'- vmem (inter)','ch_nofinal':'- final_step (inter)',
   'ch_noinv':'- 1- inversion (inter)','ch_nolr':'- loss-ratio (inter)',
+  # 26-10-20 임계값 경로 대조군 (collect_paper_v2.py _arm_core 와 같은 이름)
+  'unisparse':'UniSparse','unisparse_opt':'UniSparse (in optimizer)','atlif':'AT-LIF','atlif_regonly':'AT-LIF (reg only)',
   # 09-30 규제 시작 지연 (loss-ratio start_ep=30/60)
   'ours_w1_st30':'ours_w1 st30','ours_w1_st60':'ours_w1 st60',
   'ours_ch_st30':'ours_inter_ch st30','ours_ch_st60':'ours_inter_ch st60',
@@ -42,7 +44,13 @@ def f(x):
     try: return float(x)
     except: return None
 runs = {}
-for srv, fn in (('138','inv138.csv'),('23','inv23.csv')):
+# 26-10-19 서버 55 (neuro, 161.122.23.55) 추가. 55 는 refresh.sh 가 수집에 실패하면 inv55.csv 를 지워 두므로
+# 파일이 없을 수 있다 -> 경고만 남기고 55 없이 계속한다 (138/23 은 예전처럼 없으면 죽는다).
+# 55 런의 CSV `server` 칸은 collect_paper_v2 가 /srv2 경로를 보고 '23' 으로 적지만, 여기서는 쓰지 않고 파일로 정한다.
+for srv, fn in (('138','inv138.csv'),('23','inv23.csv'),('55','inv55.csv')):
+    if srv == '55' and not os.path.exists(os.path.join(D, fn)):
+        print('[경고] inv55.csv 없음 — 서버 55 는 이번 원장에서 빠졌다')
+        continue
     for r in csv.DictReader(open(os.path.join(D, fn))):
         tag = os.path.basename(r['run_dir'].rstrip('/'))
         m = NAME.match(tag)
@@ -89,6 +97,11 @@ def live_runs(lines, root=None):
             live.setdefault(tag, g)
         m = re.search(r'run_paper\.py (\S+) (\S+) (\S+) --seeds (\d+) --gpus (\d+)', line)
         if m:
+            # 26-10-19 --dir 가 _paper/_ours 가 아닌 시험 실행 (예: 55 의 `--dir _smoke --epochs 2`) 은 원장 대상이 아니다.
+            # 태그가 실제 런과 같아서 (r19c10-ours_ch-3e-3-s1) 지나치면 그 런이 '진행 중'으로 보인다. --dir 가 없으면 기본값 _paper.
+            dm = re.search(r'--dir (\S+)', line)
+            if dm and dm.group(1) not in ('_paper', '_ours'):
+                continue
             cb, mt, kb, sd, g = m.groups()
             live[f"{cb}-{mt}-{kb.replace('.','p')}-s{sd}"] = g
     return live
@@ -104,6 +117,14 @@ try:
     LIVE23 = live_runs(open(os.path.join(D, 'ps23.txt'), errors='ignore').read().splitlines())
 except Exception:
     LIVE23 = {}
+# 26-10-19 서버 55 도 같다 (refresh.sh 가 ps55.txt 로 받아 둔다). 55 의 큐 러너 런은 상태칸 run:neuro:gpu<N> 이 이미 GPU 를 담고 있다
+try:
+    LIVE55 = live_runs(open(os.path.join(D, 'ps55.txt'), errors='ignore').read().splitlines())
+except Exception:
+    LIVE55 = {}
+# 큐 상태칸 run:<호스트>:<...> 의 호스트 이름 -> 서버 표기. queue_runner 는 socket.gethostname() 을 적는다.
+# 원격 러너(sejong, neuro)는 run:<호스트>:gpu<N>, canus 로컬 러너는 run:canus:<pid>. 목록에 없는 호스트는 예전처럼 23.
+HOST2SRV = {'canus': '138', 'neuro': '55'}
 qline = 0
 # 큐 상태
 Q = '/home/kyccj/PycharmProjects/TensorFlow-SNNs/_queue/QUEUE.tsv'
@@ -127,16 +148,17 @@ for l in open(Q):
         r['pri'] = int(pri) if pri.lstrip('-').isdigit() else 9
         if s == 'run':
             host, who = (st.split(':') + ['', ''])[1:3]
-            r['server'] = '138' if host == 'canus' else '23'
+            r['server'] = HOST2SRV.get(host, '23')
             r['gpu'] = who[3:] if who.startswith('gpu') else GPU138.get(tag, '?')
 for r in runs.values():
     q = r.get('queue','')
     if r['completed']:
         r['status'] = 'excluded' if r.get('exclude') else 'done'
     elif q == 'run':   r['status'] = 'running'
-    elif r['tag'] in LIVE138 or r['tag'] in LIVE23:
+    elif r['tag'] in LIVE138 or r['tag'] in LIVE23 or r['tag'] in LIVE55:
         # 큐 행 없이 직접 띄운 런 (26-10-14). 서버는 프로세스가 보인 쪽, GPU 는 명령/설정에서 읽은 값.
-        srv, live = ('138', LIVE138) if r['tag'] in LIVE138 else ('23', LIVE23)
+        srv, live = (('138', LIVE138) if r['tag'] in LIVE138 else
+                     ('23', LIVE23) if r['tag'] in LIVE23 else ('55', LIVE55))
         r['status'] = 'running'; r['server'] = srv
         r['gpu'] = live[r['tag']] if live[r['tag']] is not None else '?'
     elif q == 'todo':  r['status'] = 'todo'

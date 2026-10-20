@@ -67,6 +67,15 @@ def arm_from_conf(c):
 
 
 def _arm_core(c):
+    # 26-10-20 대조군 플래그를 reg_spike_out 판정보다 먼저 본다. 임계값 경로 두 팔(unisparse·atlif)은
+    # reg_spike_out=False 라 아래에서 'baseline' 으로 찍혀 baseline n 에 조용히 섞였고, Suetake 는
+    # reg_spike_out=True·out_sc=False 라 'plain L2' 로 찍혔다 (10-20 리뷰). 이름은 merge_inv.py KEY2ARM 과 같다.
+    if c.get('reg_spike_unisparse', False):
+        return 'UniSparse (in optimizer)' if c.get('reg_spike_unisparse_update', 'direct') == 'optimizer' else 'UniSparse'
+    if c.get('reg_spike_atlif', False):
+        return 'AT-LIF (reg only)' if c.get('reg_spike_atlif_theta_task', 'sgd') == 'none' else 'AT-LIF'
+    if c.get('reg_spike_suetake', False):
+        return 'Suetake'
     if not c.get('reg_spike_out', False):
         return 'baseline'
     if c.get('reg_spike_out_bpsr', False):
@@ -118,8 +127,15 @@ DIR_ARM = {
     # 26-10-05 끝 구간 규제 해제 (loss-ratio end_ep)
     'ours_ch_end40': 'ours_inter_ch end40', 'ours_ch_end30': 'ours_inter_ch end30',
     'ours_chxwc': 'ours_inter_ch × intra',
+    # 26-10-04 Suetake, 26-10-20 임계값 경로 대조군 (run_paper 방법 키)
+    'suetake': 'Suetake', 'unisparse': 'UniSparse', 'unisparse_opt': 'UniSparse (in optimizer)',
+    'atlif': 'AT-LIF', 'atlif_regonly': 'AT-LIF (reg only)',
 }
-NAME = re.compile(r'^r19c(10|100)-(.+?)-([^-]*)-s(\d+)$')
+# 26-10-20 knob 자리: 예전 `([^-]*)` 는 'e-' 가 든 knob(1e-3)을 못 받아 키가 'ours_ch-1e' 로 갈리고
+# arm_dir='?' 가 되어 교차검증이 사실상 꺼져 있었다 (base 의 '-' 도 같다). merge_inv.py 의 knob 정규식과 맞춘다.
+# 서로게이트 knob(base_sg·ours_ch_sg)도 받고, 그 밖의 모양은 예전 `[^-]*` 로 떨어진다.
+NAME = re.compile(r'^r19c(10|100)-(.+?)-(-|[0-9p]+e-?[0-9]+(?:@(?:ahf|asym)-w[0-9p]+-h[0-9p]+)?'
+                  r'|(?:ahf|asym)-w[0-9p]+-h[0-9p]+|[^-]*)-s(\d+)$')
 
 
 def parse_name(run_dir):
@@ -207,6 +223,11 @@ def collect(run_dir, stores):
            'lambda': c.get('reg_spike_out_const', ''),
            'mx_group': c.get('reg_spike_maxnorm_group', ''),
            'shape_beta': c.get('reg_spike_shape_beta', '')}
+    # 26-10-20 임계값 경로 두 팔의 lambda 는 reg_spike_out_const 가 아니라 자기 플래그에 있다
+    # (reg_spike_out_const 칸에는 원본 config 의 잔여값이 남는다)
+    for fl in ('reg_spike_unisparse', 'reg_spike_atlif'):
+        if c.get(fl, False):
+            rec['lambda'] = c.get(fl + '_lambda', '')
     # knob: rho 가 있으면 rho, 없으면 lambda
     rec['knob'] = rec['rho'] if c.get('reg_spike_loss_ratio', False) else rec['lambda']
     rows = read_epochs(run_dir)
