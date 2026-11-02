@@ -61,6 +61,7 @@
     ch_nofinal  ours_ch 에서 final_step 만 끔            knob 은 rho
     ch_noinv    ours_ch 에서 1- 반전만 끔 (no_inv)       knob 은 rho
     ch_nolr     ours_ch 에서 loss-ratio 만 끔            knob 은 **lambda** (고정)
+    ch_nowtarev ours_ch 에서 wta_rev backward 만 끔 (기울기 = ||S*w|| 의 자동미분)  knob 은 rho (26-10-28)
 
     [규제 시작 지연 -- 원 방법과 전부 같고 loss-ratio 의 start_ep 만 다르다. knob 은 rho]
     ours_w1_st30        ours_w1 + reg_spike_loss_ratio_start_ep=30
@@ -118,13 +119,31 @@ SOURCES = {
     # 26-10-15 vggdvscm 과 원본 config·main_sweep.py 가 같고 단계별 BN(bn_per_step=True)만 다르다
     # (아래 COMBO_FLAGS). 입력은 vggdvscm 그대로 스텝 t 에 프레임 t. 비교 대상 vggdvscm-base---s1~3.
     'vggdvscmtd': ('configs_paper/vggdvs_cm',            'VGGSNN',   'CIFAR10_DVS'),
+    # 26-10-26 문헌 데이터 프로토콜 (UniSparse 2026 기준 전처리): T=10 이벤트 수 10등분 프레임, 48 bicubic+antialias,
+    # 클립 단위 증강, 클래스별 900/100 (시험 1000장 = valid), T·B 묶음 BN. 모델·학습 레시피는 우리 것이다 (7축 차이는
+    # configs_paper/vggdvs_lit/config_sweep.py 머리 주석) -- '문헌 설정'이라고 부르지 않는다. 손실은 스텝 출력을
+    # 복원한 TET (lib_snn/tet_loss.py out='step'). 위 T=4 조합들과 섞지 않는다 (rho·s_count·R·val 의 성격이 다르다).
+    # 아래 COMBO_FLAGS·LIT 와 lit 전용 새 파일 (datasets/cifar10_dvs_lit.py, lib_snn/tet_loss.py,
+    # lib_snn/lit_spike_metrics.py, build_dvslit_cache.py) 로만 켜진다.
+    # 원본 config 는 vggdvs 복사본에 T=10, batch 40, data_aug_mix='None' 만 바꾼 것 (그 파일 머리 주석).
+    'vggdvslit': ('configs_paper/vggdvs_lit',             'VGGSNN',   'CIFAR10_DVS'),
+    # 26-11-02 r19c10 과 원본 config 가 같고 time_step 만 8 (아래 COMBO_FLAGS, 사용자 승인 11-02).
+    # 원본은 time_step 을 대입하지 않아 flags.py 기본값 4 로 돈다. T=4 조합들과 s_count·rho 눈금이 달라 섞지 않는다.
+    'r19c10t8': ('_rho_agg/agg_r19_c10',                  'ResNet19', 'CIFAR10'),
 }
 
 # 26-10-15 조합에 묶인 플래그. 방법(METHODS)·BASE 가 아니라 조합에 붙여 방법과 무관하게 이 조합에서만 켠다.
 # 사용자 지시(10-15): 단계별 BN 은 VGGSNN x CIFAR10_DVS 에서만, 다른 방법·조합에는 적용 금지.
 # 여기 없는 조합은 덮어쓰기 블록이 이전과 바이트 단위로 같다 (bn_per_step 줄 자체가 안 생긴다. verify 가 확인).
 # bn_per_step = BN 통계(평균·분산, 이동평균)는 T*B 에서, 정규화는 스텝별 (flags.py 주석).
-COMBO_FLAGS = {'vggdvscmtd': {'bn_per_step': True}}
+COMBO_FLAGS = {'vggdvscmtd': {'bn_per_step': True},
+               # 26-10-26 문헌 BN 은 T*B 묶음 BN (flatten(0,1)+BatchNorm2d) -- bn_per_step 이 바로 그 구조다.
+               # 평균 BN 이면 전 프레임 입력의 시험 시 BN 입력이 '전체 히스토그램/T' 가 되어 분할 방식이 거의
+               # 드러나지 않는다 (학습 시에는 증강이 있어 근사). 프레임 0 반복(vggdvsf0)은 이와 달리 분할 방식이
+               # 입력 내용을 바꾼다.
+               'vggdvslit': {'bn_per_step': True},
+               # 26-11-02 R19-C10 T=8. 배치·에폭·학습률은 r19c10 그대로다.
+               'r19c10t8': {'time_step': 8}}
 
 # 26-10-15 '첫 프레임' 조합. 이 조합만 생성되는 main_sweep.py 의 데이터 로드 직후에 FRAME0_PATCH 를
 # 끼운다 -- lib_snn/·datasets/ 는 안 건드린다. 패치 문자열은 10-14 수동 런 _ours/vggdvs-base-f0-s1 의
@@ -140,6 +159,48 @@ FRAME0_PATCH = (
     "train_ds = train_ds.map(_f0); valid_ds = valid_ds.map(_f0); test_ds = test_ds.map(_f0)\n"
     "print('[FRAME0] input = frame 0 repeated T times', flush=True)\n"
     "# <<< frame0\n")
+
+# 26-10-26 문헌 데이터 프로토콜 조합. 이 조합만 생성되는 main_sweep.py 에 세 패치를 끼운다 (FRAME0 와 같은 방식,
+# lib_snn/·datasets/ 의 기존 파일은 안 건드린다). 기준 줄이 각각 정확히 1개여야 하고 아니면 투입 전에 멈춘다.
+#   (1) 데이터: datasets.cifar10_dvs 를 datasets/cifar10_dvs_lit.py 로 바꿔 끼운다. datasets/datasets.py 가
+#       호출 시점에 getattr(datasets, 'cifar10_dvs') 로 찾으므로 load() 가 새 로더로 간다.
+#   (2) 모델 직후 (dist_strategy.scope() 안): 출력 [B,T,C] + TET 손실로 다시 compile (lib_snn/tet_loss.py).
+#       out='step': n_fc 누적 막전위의 softmax 에서 스텝 출력 u_t (+클래스 무관 상수) 를 복원해 문헌식 손실·평가.
+#   (3) 콜백 직후: 에폭 끝 GPU 메모리 peak 로그 (연기시험 실측용) + 문헌 정의 스파이크 집계 (n_in 제외 은닉
+#       스파이크·발화율·SOP, lib_snn/lit_spike_metrics.py) + TET 1e-30 바닥 감시 (PFloorLogger).
+#       셋 다 읽기만 한다 (학습 무영향, logs 키 추가 없음).
+# 패치마다 로그 표식([DVSLIT] [TET] [MEM] [PFLOOR] [LITSPK])을 남긴다 -- 패치 없이 돈 런은 표식이 없어 원장에서 거른다.
+# 다른 조합의 main_sweep.py 는 이전과 같다 (make_main 참고).
+LIT = {'vggdvslit'}
+LIT_PATCHES = (
+    ('import datasets\nimport callbacks\n',
+     "# >>> dvslit (26-10-26): 문헌 프로토콜 로더 (datasets/cifar10_dvs_lit.py)\n"
+     "import datasets.cifar10_dvs_lit as _dvslit\n"
+     "datasets.cifar10_dvs = _dvslit\n"
+     "print('[DVSLIT] loader = datasets.cifar10_dvs_lit', flush=True)\n"
+     "# <<< dvslit\n"),
+    ('    model = lib_snn.model_builder.model_builder(num_class,train_steps_per_epoch,valid_ds)\n',
+     "    # >>> dvslit (26-10-26): 출력 [B,T,C] + TET 손실로 다시 compile (lib_snn/tet_loss.py)\n"
+     "    import lib_snn.tet_loss as _tet\n"
+     "    _tet.apply(model, config, out='step')\n"
+     "    # <<< dvslit\n"),
+    ('        callbacks.callbacks_snn_train(model,train_ds_num,valid_ds,test_ds_num)\n',
+     "    callbacks_train.append(_tet.MemPeakLogger())    # dvslit: 에폭 끝 GPU 메모리 peak\n"
+     "    callbacks_train.append(_tet.PFloorLogger())    # dvslit: TET 1e-30 바닥에 걸린 p 비율 (읽기 전용)\n"
+     "    import lib_snn.lit_spike_metrics as _litspk\n"
+     "    callbacks_train.append(_litspk.LitSpikeLogger(model, config))    # dvslit: 문헌 정의 스파이크 (n_in 제외)\n"),
+)
+
+
+def _load_lit():
+    """datasets/cifar10_dvs_lit.py 를 파일 경로로 불러온다 (datasets/__init__ 이 config·TF 를 끌어오지 않게).
+    그 모듈은 맨 위에서 numpy 만 import 한다."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        '_cifar10_dvs_lit', os.path.join(PROJECT_ROOT, 'datasets', 'cifar10_dvs_lit.py'))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
 
 # 모든 방법이 공유하는 바닥값. 켜고 끄는 것을 전부 명시해 원본 상태에 안 기댄다.
 BASE = {
@@ -396,6 +457,21 @@ def METHODS(name, knob):
         # 전부 지우고 FIXED 로 바꾼다 (키 집합은 abl_nolr 과 같은 모양).
         base = {k: v for k, v in METHODS('ours_ch', knob).items() if k not in RATIO(knob)}
         return {**base, **FIXED(knob)}
+    if name == 'ch_nowtarev':
+        # 26-10-28 '- wta_rev' (사용자 승인 10-28). ours_inter_ch 에서 wta_rev backward 만 끈다.
+        # 키는 ours_ch 어블레이션 관례 ch_* 를 따른다 (10-28 abl_nowtarev 에서 이름만 바꿈. 정의는 같고,
+        # 옛 이름으로 돈 것은 연기시험 _smoke/r19c10-abl_nowtarev-3e-3-s901 하나뿐이다).
+        # neurons.py 의 sc 가지는 그대로 돈다: sc_rate(1-maxnorm, channel 묶음, vmem readiness),
+        # spike_reg(final_step 의 T 합), sc_loss = spike_reg*sc_rate 까지 같고, 마지막 노름만
+        # l2_norm_wta_rev 대신 `elif conf.reg_spike_out_norm` 의 l2_norm 으로 간다. 두 함수 forward 는
+        # 같은 sqrt(sum(x^2)) 라 R·sc_loss_snap·loss-ratio 의 rho 눈금이 ours_ch 와 공유된다.
+        # 기울기: wta_rev 는 dL/dS = lambda*w^2/R (S=0 인 쌍에도), 여기는 자동미분 lambda*w^2*S/R.
+        # sc_rate 계산 쪽에서 wta_rev 를 읽는 elif(neurons.py 1118)는 maxnorm 가지 뒤라 안 닿는다.
+        # wta_rev 가 꺼지면 out_norm/out_norm_sq 가 노름 가지를 정하므로 원본 config 에 안 기대고
+        # 명시한다 (SOURCES 원본은 모두 out_norm=True, norm_sq 는 기본 False -- 값은 그대로).
+        # wta_rev_w1 은 BASE 가 False 로 둔다 (True 면 neurons.py assert 가 막는다).
+        return {**METHODS('ours_ch', knob), 'reg_spike_out_wta_rev': False,
+                'reg_spike_out_norm': True, 'reg_spike_out_norm_sq': False}
     # --- 규제 시작 지연 (09-30) --------------------------------------------------------
     # 원 방법과 **모든 설정이 같고** reg_spike_loss_ratio_start_ep 만 30/60 으로 덮는다.
     # proc.py 의 loss-ratio 갱신(spike_count_epoch_end)이 확인한 동작:
@@ -507,6 +583,13 @@ def make_main(combo):
         if n != 1:
             raise RuntimeError(f'{combo}: main_snn_training.py 의 데이터 로드 줄이 {n}개 (1개여야 함)')
         m = m.replace(FRAME0_ANCHOR, FRAME0_ANCHOR + FRAME0_PATCH)
+    if combo in LIT:
+        # FRAME0 와 같은 이유로 기준 줄이 각각 정확히 하나여야 한다 (조용히 옛 로더·CE 로 도는 것을 막는다)
+        for anchor, patch in LIT_PATCHES:
+            n = m.count(anchor)
+            if n != 1:
+                raise RuntimeError(f'{combo}: main_snn_training.py 의 기준 줄 {anchor.strip()!r} 이 {n}개 (1개여야 함)')
+            m = m.replace(anchor, anchor + patch)
     return m
 
 
@@ -559,10 +642,14 @@ def verify(path, combo, method, knob, seed, gpu, tag, epochs=0, fix_seed=False):
     for k, v in want.items():
         if not re.search(rf'^conf\.{re.escape(k)} = {re.escape(fmt(v))}$', a, re.M):
             raise RuntimeError(f'{tag}: {k}={fmt(v)} 가 블록에 없음')
-    # 조합 플래그는 그 조합 밖의 config 에 한 줄도 나타나면 안 된다 (단계별 BN 범위 한정, 사용자 10-15)
+    # 조합 플래그는 그 조합 밖의 config 에 run_paper 가 한 줄도 더하면 안 된다 (단계별 BN 범위 한정, 사용자 10-15).
+    # 26-11-02 time_step 만 예외: vggdvs 계열 원본이 직접 대입하므로 '원본과 대입 줄 수가 같음' 으로 본다.
+    # 나머지 키(bn_per_step)는 이전 그대로 원본에 있어도 막는다 (_*/ 원본은 gitignore 라 서버마다 따로 있다).
     for k in {k for cf in COMBO_FLAGS.values() for k in cf} - set(want):
-        if re.search(rf'^\s*conf\.{re.escape(k)}\s*=', a, re.M):
-            raise RuntimeError(f'{tag}: {combo} 조합인데 {k} 대입이 config 에 있음')
+        pat = rf'^\s*conf\.{re.escape(k)}\s*='
+        allowed = len(re.findall(pat, b, re.M)) if k == 'time_step' else 0
+        if len(re.findall(pat, a, re.M)) != allowed:
+            raise RuntimeError(f'{tag}: {combo} 조합인데 {k} 대입이 config 에 있음 (원본 허용 {allowed}줄)')
     if want.get('bn_per_step') and SOURCES[combo][1:] != ('VGGSNN', 'CIFAR10_DVS'):
         raise RuntimeError(f'{tag}: bn_per_step 은 VGGSNN x CIFAR10_DVS 전용')
     want_seed = seed if fix_seed else -1
@@ -624,6 +711,20 @@ def preflight(jobs, sweep_dir, epochs=0, fix_seed=False):
             if key == 'reg_spike_unisparse' and \
                     '_thr_stash' not in open(os.path.join(PROJECT_ROOT, 'lib_snn', 'layers.py')).read():
                 bad.append('lib_snn/layers.py 에 BN 입력 참조(_thr_stash) 반영 안 됨')
+    # 26-10-26 문헌 데이터 프로토콜 조합: 새 파일과 이 서버의 캐시(manifest 키·표본 수·파일 sha256 = canus 기준)가
+    # 있어야 한다. 캐시 위치는 env EIP_DVSLIT_CACHE, 없으면 dirname(EIP_STORE)/dvslit_cache/<키> (로더와 같은 함수).
+    # sha256 대조는 1.84GB 를 읽는다 (canus 약 9초). 다른 TF 로 다시 빌드한 원격 캐시를 여기서 거른다.
+    if any(j[0] in LIT for j in jobs):
+        for rel in ('datasets/cifar10_dvs_lit.py', 'lib_snn/tet_loss.py', 'lib_snn/lit_spike_metrics.py',
+                    'build_dvslit_cache.py'):
+            if not os.path.exists(os.path.join(PROJECT_ROOT, rel)):
+                bad.append(f'{rel} 없음')
+        if not bad:
+            try:
+                lit = _load_lit()
+                lit.check_cache(lit.cache_dir(), verify_sha=True)
+            except Exception as e:
+                bad.append(f'dvslit 캐시: {e}')
     if bad:
         raise SystemExit('중단:\n  ' + '\n  '.join(bad))
     os.makedirs(sweep_dir, exist_ok=True)
@@ -634,7 +735,7 @@ def preflight(jobs, sweep_dir, epochs=0, fix_seed=False):
             verify(tmp, combo, method, knob, seed, 0, tag, epochs, fix_seed)
         finally:
             os.remove(tmp)
-        make_main(combo)    # FRAME0 조합의 기준 줄 확인 (파일은 안 쓴다)
+        make_main(combo)    # FRAME0·LIT 조합의 기준 줄 확인 (파일은 안 쓴다)
     print(f'사전 점검 통과: {len(jobs)}개 config 생성·검증 완료', flush=True)
 
 
@@ -694,7 +795,7 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake unisparse unisparse_opt atlif atlif_regonly ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
+    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake unisparse unisparse_opt atlif atlif_regonly ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ch_nowtarev ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
     ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_ch_taylor/ours_chxwc/ours_layer/ours_layer_w1/*_st30·*_st60/*_end40·*_end30/l2_lr/abl(nolr 제외)/lw1(nolr 제외)/ch_*(nolr 제외) 은 rho, sm/l2/bpsr/suetake/unisparse*/atlif*/abl_nolr/lw1_nolr/ch_nolr 은 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
@@ -711,7 +812,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake unisparse unisparse_opt atlif atlif_regonly ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
+        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake unisparse unisparse_opt atlif atlif_regonly ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ch_nowtarev ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 
