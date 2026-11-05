@@ -17,6 +17,7 @@
     ours_ch     prop 와 전부 같고 max 범위만 채널 합끼리 ('channel'). knob 은 rho
     ours_ch_b7  ours_ch + shape_beta=0.7 (1등 채널도 w=0.3 을 받는다). knob 은 rho
     ours_ch_b4  ours_ch + shape_beta=0.4. knob 은 rho
+    ch_uni      ours_ch + shape_beta=0.0 (채널 경쟁 없음: 모든 채널 w=1, 균일 가중). knob 은 rho (26-11-05)
     ours_ch_taylor ours_ch 와 전부 같고 채널 서열만 Taylor 중요도 |sum (dL/ds)*s| 의 EMA 로 매긴다
                 (규제 항은 여전히 스파이크. 26-10-02). knob 은 rho
     ours_chxwc  ours_ch 와 전부 같고 가중만 inter x intra 곱: (1-ch/ch_max)*(1-scp/max_hw scp)
@@ -277,6 +278,14 @@ def METHODS(name, knob):
         # 이 스윕은 lambda 스윕으로 위장되지 않는다 (그래서 shape_mean1 은 켜지 않는다).
         beta = 0.7 if name.endswith('b7') else 0.4
         return {**METHODS('ours_ch', knob), 'reg_spike_shape_beta': beta}
+    if name == 'ch_uni':
+        # 26-11-05 박사님 미팅 후 단일 어블레이션 '채널 경쟁 없음 (균일 가중)' (사용자 승인 11-05).
+        # ours_ch 와 전부 같고 shape_beta=0 -> sc_rate = 1 - 0*sc/max = 1, 모든 채널이 같은 벌점.
+        # ch_noinv(1- 반전만 끔, 1등 채널이 가장 세게 눌림)와 달리 경쟁 자체를 없앤 대조다.
+        # vmem·wta_rev(count-free)·loss-ratio·final_step 은 ours_ch 그대로. vmem readiness 는
+        # sc_rate 를 거치므로 beta=0 에서 효과가 사라진다 (경쟁 가중 안에 들어 있는 요소라서).
+        # shape_mean1 은 켜지 않는다 (ours_ch_b* 와 같은 이유: loss-ratio 가 배율을 되푼다).
+        return {**METHODS('ours_ch', knob), 'reg_spike_shape_beta': 0.0}
     if name == 'ours_ch_taylor':
         # 26-10-02 ours_ch 와 전부 같고 채널 서열의 기준만 다르다: 스파이크 공간합 대신
         # Taylor 중요도 imp_c = |sum_{i in c} (dL/ds_i)*s_i| (배치 평균, EMA). 벌점을 받는 양
@@ -795,7 +804,7 @@ def free_gpus(allowed, exclude, max_mib=200):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('combo', nargs='?', help=' / '.join(SOURCES))
-    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake unisparse unisparse_opt atlif atlif_regonly ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ch_nowtarev ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
+    ap.add_argument('method', nargs='?', help='base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ch_uni ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake unisparse unisparse_opt atlif atlif_regonly ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ch_nowtarev ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
     ap.add_argument('knob', nargs='?', help="prop/ours_w1/ours_ch/ours_ch_taylor/ours_chxwc/ours_layer/ours_layer_w1/*_st30·*_st60/*_end40·*_end30/l2_lr/abl(nolr 제외)/lw1(nolr 제외)/ch_*(nolr 제외) 은 rho, sm/l2/bpsr/suetake/unisparse*/atlif*/abl_nolr/lw1_nolr/ch_nolr 은 lambda, base 는 '-'")
     ap.add_argument('--seeds', default='1,2,3,4,5', help='복제 시드 (쉼표). 서로 달라야 한다')
     ap.add_argument('--gpus', default='0,1,2,3,4,5', help='쓸 GPU (쉼표). 6·7 은 기본 제외')
@@ -812,7 +821,7 @@ def main():
         print('조합:')
         for k, (s, m, d) in SOURCES.items():
             print(f'  {k:9s} {m:9s} {d:9s}  <- {s}')
-        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake unisparse unisparse_opt atlif atlif_regonly ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ch_nowtarev ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
+        print('\n방법: base prop ours_w1 ours_ch ours_ch_b7 ours_ch_b4 ch_uni ours_ch_taylor ours_chxwc l2 l2_lr sm bpsr suetake unisparse unisparse_opt atlif atlif_regonly ours_layer ours_layer_w1 abl_nofinal abl_novmem abl_noinv abl_noinv_wc abl_nolr lw1_novmem lw1_nofinal lw1_nolr lw1_noinv ch_novmem ch_nofinal ch_noinv ch_nolr ch_nowtarev ours_w1_st30 ours_w1_st60 ours_ch_st30 ours_ch_st60 ours_layer_w1_st30 ours_layer_w1_st60 ours_ch_end40 ours_ch_end30')
         print('\n예) python run_paper.py r19c10 prop 1e-3 --seeds 1,2,3,4,5 --gpus 0,2')
         return
 
