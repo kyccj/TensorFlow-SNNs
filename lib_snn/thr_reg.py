@@ -184,7 +184,13 @@ def _check_recipe():
     assert conf.n_reset_type == 'reset_by_sub', conf.n_reset_type
     assert conf.binary_spike and not conf.integer_spike
     assert not (conf.leak_time_dep or conf.adaptive_vth or conf.adaptive_vth_SEL or conf.vth_rand_static)
-    assert not (conf.noise_en or conf.SEL_noise_en_spike or conf.low_test or conf.bn_per_step)
+    assert not (conf.noise_en or conf.SEL_noise_en_spike or conf.low_test)
+    # 26-11-10 단계별 BN(bn_per_step) 금지는 UniSparse 에만 건다 (사용자 결정 11-10 '(가)').
+    # UniSparse 는 그림자 순전파에서 앞 BN 을 배치 통계로 다시 돌린다 -- temporal_batch BN 은 그 경로가 없다 (_check_bn 도 막는다).
+    # AT-LIF 는 BN 을 건드리지 않고 뉴런의 theta 만 쓴다 (atlif_step). 문헌 코드도 T*B 묶음 BN (spikingjelly 다단계 BN) 이다.
+    # vggdvslit 계열(문헌 로더가 bn_per_step=True 를 요구) x atlif 를 돌리려고 푼다. bn_per_step=False 인 런(R19 등)은 이전과 같다.
+    assert not (conf.reg_spike_unisparse and conf.bn_per_step), \
+        'thr_reg: UniSparse 는 단계별 BN(bn_per_step) 과 같이 켜지 않는다 (그림자 순전파가 temporal_batch BN 을 모른다)'
     assert tf.keras.mixed_precision.global_policy().name == 'float32'
 
 

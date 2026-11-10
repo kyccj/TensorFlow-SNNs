@@ -40,6 +40,12 @@ try:
                                 ResNet56V2, ResNet20_SEW, ResNet34_MS,
                                 ResNet18_MS, ResNet32_MS)
 except Exception: pass
+# 26-11-10 문헌 비교용 변형 (models/resnet_lit.py, run_paper.py 의 r18c10t1·r20c10t8 조합). 따로 import 해서
+# 이 파일이 실패해도 위 ResNet 들은 그대로다.
+ResNet20_W32 = ResNet18_PreAct = None
+try:
+    from models.resnet_lit import ResNet20_W32, ResNet18_PreAct
+except Exception: pass
 try:
     from models.spikformer import spikformer
 except Exception: pass
@@ -90,6 +96,8 @@ model_sel_sc = {
     'ResNet34_MS': ResNet34_MS,
     'ResNet32_MS': ResNet32_MS,
     'ResNet18_MS': ResNet18_MS,
+    'ResNet20_W32': ResNet20_W32,          # 26-11-10 Activity Pruning 의 ResNet-20 (폭 32/64/128)
+    'ResNet18_PreAct': ResNet18_PreAct,    # 26-11-10 Synaptic Interaction Penalty 의 사전 활성화 ResNet18
     'MobileNetV2': MobileNetV2,
     'EfficientNetV2S': EfficientNetV2S,
     'EfficientNetV2M': EfficientNetV2M,

@@ -134,6 +134,13 @@ SOURCES = {
     # 26-11-10 r19c10t8 과 같은 방식으로 time_step 만 2 (아래 COMBO_FLAGS, 사용자 승인 11-10 "준비하고 칸 비면 넣기").
     # 같은 SOPs 에서 baseline T=2 와 ours T=4 를 비교하려는 조합이다. T=4·T=8 조합과 s_count·rho 눈금이 달라 섞지 않는다.
     'r19c10t2': ('_rho_agg/agg_r19_c10',                  'ResNet19', 'CIFAR10'),
+    # 26-11-10 문헌과 같은 구조·같은 T (11-10 박사님 미팅). 원본 config 는 R19 C10 그대로라 학습 레시피(lr 6e-3·
+    # wd 2e-2·배치 100·310에폭·증강·서로게이트)는 원본의 ResNet19 가지에서 정해지고, 덮어쓰기 블록이 model·time_step 만
+    # 바꾼다 (아래 COMBO_FLAGS). 모델 정의는 models/resnet_lit.py (기존 models/resnet.py 는 그대로).
+    #   r18c10t1 = Synaptic Interaction Penalty (arXiv 2302.01500) 의 사전 활성화 ResNet18, T=1 (단일 스텝)
+    #   r20c10t8 = Activity Pruning (NeurIPS 2025) 의 ResNet-20 (폭 32/64/128), T=8
+    'r18c10t1': ('_rho_agg/agg_r19_c10',                  'ResNet18_PreAct', 'CIFAR10'),
+    'r20c10t8': ('_rho_agg/agg_r19_c10',                  'ResNet20_W32', 'CIFAR10'),
 }
 
 # 26-10-15 조합에 묶인 플래그. 방법(METHODS)·BASE 가 아니라 조합에 붙여 방법과 무관하게 이 조합에서만 켠다.
@@ -149,7 +156,12 @@ COMBO_FLAGS = {'vggdvscmtd': {'bn_per_step': True},
                # 26-11-02 R19-C10 T=8. 배치·에폭·학습률은 r19c10 그대로다.
                'r19c10t8': {'time_step': 8},
                # 26-11-10 R19-C10 T=2. r19c10t8 과 같이 배치·에폭·학습률은 r19c10 그대로다.
-               'r19c10t2': {'time_step': 2}}
+               'r19c10t2': {'time_step': 2},
+               # 26-11-10 문헌 구조 조합. model 은 원본의 conf.model='ResNet19' 뒤에서 덮는다 (lr 등은 이미 정해진 뒤).
+               'r18c10t1': {'model': "'ResNet18_PreAct'", 'time_step': 1},
+               'r20c10t8': {'model': "'ResNet20_W32'", 'time_step': 8}}
+# 26-11-10 models/resnet_lit.py 에만 있는 모델 (preflight 가 이 작업 트리에 정의·등록이 있는지 본다)
+LIT_MODELS = {'ResNet18_PreAct', 'ResNet20_W32'}
 
 # 26-10-15 '첫 프레임' 조합. 이 조합만 생성되는 main_sweep.py 의 데이터 로드 직후에 FRAME0_PATCH 를
 # 끼운다 -- lib_snn/·datasets/ 는 안 건드린다. 패치 문자열은 10-14 수동 런 _ours/vggdvs-base-f0-s1 의
@@ -659,9 +671,10 @@ def verify(path, combo, method, knob, seed, gpu, tag, epochs=0, fix_seed=False):
     # 조합 플래그는 그 조합 밖의 config 에 run_paper 가 한 줄도 더하면 안 된다 (단계별 BN 범위 한정, 사용자 10-15).
     # 26-11-02 time_step 만 예외: vggdvs 계열 원본이 직접 대입하므로 '원본과 대입 줄 수가 같음' 으로 본다.
     # 나머지 키(bn_per_step)는 이전 그대로 원본에 있어도 막는다 (_*/ 원본은 gitignore 라 서버마다 따로 있다).
+    # 26-11-10 model 도 time_step 과 같은 예외: 모든 원본이 conf.model 을 직접 대입한다.
     for k in {k for cf in COMBO_FLAGS.values() for k in cf} - set(want):
         pat = rf'^\s*conf\.{re.escape(k)}\s*='
-        allowed = len(re.findall(pat, b, re.M)) if k == 'time_step' else 0
+        allowed = len(re.findall(pat, b, re.M)) if k in ('time_step', 'model') else 0
         if len(re.findall(pat, a, re.M)) != allowed:
             raise RuntimeError(f'{tag}: {combo} 조합인데 {k} 대입이 config 에 있음 (원본 허용 {allowed}줄)')
     if want.get('bn_per_step') and SOURCES[combo][1:] != ('VGGSNN', 'CIFAR10_DVS'):
@@ -725,6 +738,14 @@ def preflight(jobs, sweep_dir, epochs=0, fix_seed=False):
             if key == 'reg_spike_unisparse' and \
                     '_thr_stash' not in open(os.path.join(PROJECT_ROOT, 'lib_snn', 'layers.py')).read():
                 bad.append('lib_snn/layers.py 에 BN 입력 참조(_thr_stash) 반영 안 됨')
+    # 26-11-10 문헌 구조 조합: 모델 정의(models/resnet_lit.py)와 등록(models/models.py)이 이 작업 트리에 있어야 한다.
+    # models.py 는 import 실패를 조용히 None 으로 넘기므로 여기서 먼저 본다.
+    for m in {SOURCES[j[0]][1] for j in jobs if j[0] in SOURCES} & LIT_MODELS:
+        lit_py = os.path.join(PROJECT_ROOT, 'models', 'resnet_lit.py')
+        if not os.path.exists(lit_py) or f'def {m}(' not in open(lit_py).read():
+            bad.append(f'models/resnet_lit.py 에 {m} 정의 없음')
+        if f"'{m}': {m}" not in open(os.path.join(PROJECT_ROOT, 'models', 'models.py')).read():
+            bad.append(f'models/models.py 에 {m} 등록 없음')
     # 26-10-26 문헌 데이터 프로토콜 조합: 새 파일과 이 서버의 캐시(manifest 키·표본 수·파일 sha256 = canus 기준)가
     # 있어야 한다. 캐시 위치는 env EIP_DVSLIT_CACHE, 없으면 dirname(EIP_STORE)/dvslit_cache/<키> (로더와 같은 함수).
     # sha256 대조는 1.84GB 를 읽는다 (canus 약 9초). 다른 TF 로 다시 빌드한 원격 캐시를 여기서 거른다.
