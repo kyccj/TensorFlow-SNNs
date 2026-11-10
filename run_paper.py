@@ -131,6 +131,9 @@ SOURCES = {
     # 26-11-02 r19c10 과 원본 config 가 같고 time_step 만 8 (아래 COMBO_FLAGS, 사용자 승인 11-02).
     # 원본은 time_step 을 대입하지 않아 flags.py 기본값 4 로 돈다. T=4 조합들과 s_count·rho 눈금이 달라 섞지 않는다.
     'r19c10t8': ('_rho_agg/agg_r19_c10',                  'ResNet19', 'CIFAR10'),
+    # 26-11-10 r19c10t8 과 같은 방식으로 time_step 만 2 (아래 COMBO_FLAGS, 사용자 승인 11-10 "준비하고 칸 비면 넣기").
+    # 같은 SOPs 에서 baseline T=2 와 ours T=4 를 비교하려는 조합이다. T=4·T=8 조합과 s_count·rho 눈금이 달라 섞지 않는다.
+    'r19c10t2': ('_rho_agg/agg_r19_c10',                  'ResNet19', 'CIFAR10'),
 }
 
 # 26-10-15 조합에 묶인 플래그. 방법(METHODS)·BASE 가 아니라 조합에 붙여 방법과 무관하게 이 조합에서만 켠다.
@@ -144,7 +147,9 @@ COMBO_FLAGS = {'vggdvscmtd': {'bn_per_step': True},
                # 입력 내용을 바꾼다.
                'vggdvslit': {'bn_per_step': True},
                # 26-11-02 R19-C10 T=8. 배치·에폭·학습률은 r19c10 그대로다.
-               'r19c10t8': {'time_step': 8}}
+               'r19c10t8': {'time_step': 8},
+               # 26-11-10 R19-C10 T=2. r19c10t8 과 같이 배치·에폭·학습률은 r19c10 그대로다.
+               'r19c10t2': {'time_step': 2}}
 
 # 26-10-15 '첫 프레임' 조합. 이 조합만 생성되는 main_sweep.py 의 데이터 로드 직후에 FRAME0_PATCH 를
 # 끼운다 -- lib_snn/·datasets/ 는 안 건드린다. 패치 문자열은 10-14 수동 런 _ours/vggdvs-base-f0-s1 의
